@@ -13,6 +13,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Gemma 4 LLM integration (Feature 1.2).
+- `app/services/llm.py` — provider-isolated wrapper around NVIDIA's
+  hosted chat-completions endpoint. Exposes `GemmaClient`,
+  `ChatMessage`, `ChatCompletion`, typed `LLMError` hierarchy, and
+  a cached `get_llm()` / `reset_default_llm()` singleton.
+- `app/agent/nodes.py` — `analyze_node` now calls Gemma 4 through
+  `get_llm()`, stores the assistant reply in
+  `state["analysis"]`, and records `state["metadata"]["analyze_error"]`
+  on any `LLMError` so the graph keeps running.
+- `app/agent/nodes.py` — `respond_node` prefers the LLM analysis,
+  falls back to the legacy echo, or surfaces an "LLM unavailable"
+  message when the analyze node errored.
+- `app/agent/state.py` — added the `analysis` field to
+  `AgentState`.
+- `app/config/settings.py` — added the NVIDIA settings block
+  (`nvidia_api_key`, `nvidia_base_url`, `nvidia_model`,
+  `nvidia_timeout_seconds`, `nvidia_max_tokens`,
+  `nvidia_temperature`, `nvidia_top_p`, `nvidia_enable_thinking`).
+- `.env.example` — documents every new NVIDIA variable.
+- `tests/test_llm.py` — 13 tests covering the client (mocked
+  transport), the analyze node, and graceful degradation paths.
+
+### Verified
+
+- Full `pytest` suite passes (19 passed).
+- Graph executes end-to-end with a stubbed NVIDIA transport and
+  produces the expected `analysis` + `response` values.
+- Analyze node raises no uncaught exceptions when the API key is
+  missing — the error is recorded in state metadata and the graph
+  produces a graceful "LLM unavailable" response.
+- Skeleton tests remain green without an API key by stubbing the
+  `analyze_node` symbol bound in `app.agent.graph`.
+- No tools, no memory, no RAG are connected — Sprint 2 constraints
+  respected.
+
+---
+
+## [0.3.0] — 2026-07-28 — LLM Integration (pending release)
+
+### Added
+
 - LangGraph agent skeleton (Feature 1.1).
 - `app/agent/` Python package exposing `build_graph` and
   `compile_graph`.

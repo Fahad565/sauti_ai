@@ -79,3 +79,119 @@ Adopted `pydantic-settings` for `.env` parsing and validation.
 - Single, consistent configuration source.
 - Tests can call `get_settings.cache_clear()` to reset the cached
   singleton between cases.
+
+---
+
+## DECISION-0003 — Adopt NVIDIA Hosted Gemma 4
+
+Date: 2026-07-27
+
+Status:
+Accepted
+
+### Context
+
+Sprint 2 introduces the first production LLM.
+
+The project requires a hosted model that is free for development,
+supports modern reasoning, and integrates easily with LangGraph.
+
+### Decision
+
+Use NVIDIA's hosted endpoint for:
+
+google/gemma-4-31b-it
+
+Authentication will use:
+
+NVIDIA_API_KEY
+
+The integration will live behind a service abstraction so providers can
+be swapped later without changing the graph.
+
+## Example:
+
+import requests
+
+invoke_url = "https://integrate.api.nvidia.com/v1/chat/completions"
+stream = False
+
+headers = {
+"Authorization": "Bearer $NVIDIA_API_KEY",
+"Accept": "text/event-stream" if stream else "application/json",
+}
+
+payload = {
+"messages": [
+{
+"role": "user",
+"content": ""
+}
+],
+"model": "google/gemma-4-31b-it",
+"chat_template_kwargs": {
+"enable_thinking": True
+},
+"max_tokens": 16384,
+"stream": stream,
+"temperature": 1,
+"top_p": 0.95
+}
+
+response = requests.post(invoke_url, headers=headers, json=payload, stream=stream)
+if stream:
+for line in response.iter_lines():
+if line:
+print(line.decode("utf-8"))
+else:
+print(response.json())
+
+## A clean Architecture would be:
+
+A clean architecture would be:
+
+app/
+├── agent/
+│ ├── graph.py
+│ ├── nodes.py # analyze_node() calls the LLM service
+│ ├── router.py
+│ └── state.py
+│
+├── services/
+│ └── llm.py # NVIDIA API wrapper
+│
+├── config/
+│ └── settings.py # NVIDIA_API_KEY, MODEL_NAME
+│
+└── tests/
+└── test_llm.py
+
+### Alternatives
+
+OpenAI
+
+Rejected due to API cost.
+
+Anthropic
+
+Rejected due to API cost.
+
+Self-hosted models
+
+Deferred until infrastructure exists.
+
+### Consequences
+
+Positive
+
+- Free development endpoint
+- High-quality reasoning
+- Provider isolated behind a service layer
+
+Risk
+
+API rate limits during development.
+
+Mitigation
+
+Keep all model access inside `app/services/llm.py`.

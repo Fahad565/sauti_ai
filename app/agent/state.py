@@ -32,6 +32,12 @@ class AgentState(TypedDict, total=False):
     # "not yet generated".
     response: str
 
+    # Raw assistant text returned by the LLM analyze node. Empty
+    # string means the LLM was not invoked or failed. Future nodes
+    # may consume this field for downstream reasoning.
+    analysis: str
+
     # Free-form metadata bag for future use (request id, source,
-    # language, etc.). Empty dict by default.
+    # language, model id, analyze_error, etc.). Empty dict by
+    # default.
     metadata: dict[str, str]

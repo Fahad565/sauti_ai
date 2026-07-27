@@ -32,6 +32,16 @@ class Settings(BaseSettings):
     environment: str = "development"
     debug: bool = True
 
+    # --- NVIDIA hosted Gemma 4 integration (Feature 1.2) -----------
+    nvidia_api_key: str | None = None
+    nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
+    nvidia_model: str = "google/gemma-4-31b-it"
+    nvidia_timeout_seconds: float = 60.0
+    nvidia_max_tokens: int = 16384
+    nvidia_temperature: float = 1.0
+    nvidia_top_p: float = 0.95
+    nvidia_enable_thinking: bool = True
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
