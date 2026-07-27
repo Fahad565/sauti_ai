@@ -16,178 +16,114 @@ No code should be written before the corresponding task has clear acceptance cri
 
 ---
 
-# Project Status
+# COMPLETED FEATURES
 
-Current Sprint:
-Sprint 0 — Foundation
-
-Current Epic:
-Project Initialization
-
-Current Feature:
-Bootstrap Foundation
-
-Current Branch:
-feature/foundation-project-setup
+## Feature 0.1 — Bootstrap FastAPI Project
 
 Status:
-🟡 In Progress
+✅ Complete
 
----
+Merged into:
+develop
 
-# EPIC 0 — Project Foundation
+Acceptance Criteria:
 
-Goal
-
-Establish a stable engineering foundation before implementing AI functionality.
-
-No business logic should exist after this epic.
-
-The objective is only to prepare the project for future development.
-
----
-
-## FEATURE 0.1 — Bootstrap FastAPI Project
-
-Branch
-
-feature/foundation-project-setup
-
-Objective
-
-Initialize the Python project with FastAPI and establish the repository structure.
-
----
-
-### Tasks
-
-- [ ] Create Python virtual environment
-- [ ] Install project dependencies
-- [ ] Generate requirements.txt
-- [ ] Create app package
-- [ ] Create app/main.py
-- [ ] Create app/config.py
-- [ ] Create .env.example
-- [ ] Configure .gitignore
-- [ ] Verify FastAPI starts successfully
-- [ ] Verify automatic OpenAPI documentation
-- [ ] Commit bootstrap foundation
-
-# TASKS.md
-
-**Project:** Sauti AI
-
-**Purpose**
-
-This document is the authoritative engineering backlog for the project.
-
-Every implementation begins with a Task.
-
-Every Task belongs to a Feature.
-
-Every Feature belongs to an Epic.
-
-No code should be written before the corresponding task has clear acceptance criteria.
-
----
+- [x] FastAPI starts
+- [x] Root endpoint
+- [x] Swagger works
+- [x] Tests pass
+- [x] PR merged
 
 # Project Status
 
 Current Sprint:
-Sprint 0 — Foundation
+Sprint 1 — Agent Skeleton
 
 Current Epic:
-Project Initialization
+AI Agent Foundation
 
 Current Feature:
-Bootstrap Foundation
+LangGraph Agent Skeleton
 
 Current Branch:
-feature/foundation-project-setup
+feature/agent-skeleton
 
 Status:
-🟡 In Progress
+� Code Complete — Pending Commit & PR
 
 ---
 
-# EPIC 0 — Project Foundation
+# EPIC 1 — AI Agent Foundation
 
 Goal
 
-Establish a stable engineering foundation before implementing AI functionality.
+Create the skeleton architecture of the LangGraph agent.
 
-No business logic should exist after this epic.
+No AI reasoning should exist yet.
 
-The objective is only to prepare the project for future development.
+Only project structure and graph wiring.
 
----
-
-## FEATURE 0.1 — Bootstrap FastAPI Project
+## FEATURE 1.1 — Agent Skeleton
 
 Branch
 
-feature/foundation-project-setup
+feature/agent-skeleton
 
 Objective
 
-Initialize the Python project with FastAPI and establish the repository structure.
-
----
+## Create the initial LangGraph architecture that future intelligence will plug into.
 
 ### Tasks
 
-- [ ] Create Python virtual environment
-- [ ] Install project dependencies
-- [ ] Generate requirements.txt
-- [ ] Create app package
-- [ ] Create app/main.py
-- [ ] Create app/config.py
-- [ ] Create .env.example
-- [ ] Configure .gitignore
-- [ ] Verify FastAPI starts successfully
-- [ ] Verify automatic OpenAPI documentation
-- [ ] Commit bootstrap foundation
+- [x] Install LangGraph
+- [x] Install LangChain Core
+- [x] Create app/agent/
+- [x] Create graph.py
+- [x] Create state.py
+- [x] Create nodes.py
+- [x] Create router.py
+- [x] Define AgentState
+- [x] Create placeholder nodes
+- [x] Build minimal graph
+- [x] Compile graph
+- [x] Add smoke test
+- [x] Verify graph compiles
+- [ ] Commit feature
 
 ---
 
 ### Acceptance Criteria
 
-- FastAPI application starts successfully.
-- Root endpoint returns HTTP 200.
-- Swagger UI loads correctly.
-- Repository structure follows project conventions.
-- requirements.txt committed.
-- .env.example committed.
-- No AI logic exists.
-- No database exists.
-- No LangGraph exists.
+- Graph compiles successfully.
+- Placeholder nodes execute.
+- State flows through graph.
+- No LLM connected.
+- No tools connected.
+- No memory.
+- Tests pass.
 
 ---
 
 ### Expected Files
 
-README.md
+app/agent/
 
-requirements.txt
-
-.env.example
-
-app/main.py
-
-app/config.py
-
-.gitignore
+    __init__.py
+    graph.py
+    nodes.py
+    router.py
+    state.py
 
 ---
 
 ### Definition of Done
 
-- All acceptance criteria satisfied.
-- Local smoke test passes.
-- Git commit created.
-- Pull Request opened against develop.
-- Successfully merged into develop.
-- Automatically deployed to Development Cloud Run.
+- Graph compiles.
+- Tests pass.
+- Commit created.
+- PR opened.
+- Merged into develop.
+- Development Cloud Run deployed.
 
 ---
 

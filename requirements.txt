@@ -2,5 +2,7 @@ fastapi==0.140.0
 uvicorn==0.51.0
 python-dotenv==1.2.2
 pydantic-settings==2.14.2
+langgraph==1.2.9
+langchain-core==1.5.1
 pytest==9.1.1
 httpx==0.28.1
