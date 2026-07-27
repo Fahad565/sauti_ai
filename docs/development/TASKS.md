@@ -121,7 +121,7 @@ app/agent/
 - Graph compiles.
 - Tests pass.
 - Commit created.
-- PR opened.
+- PR opened.git status
 - Merged into develop.
 - Development Cloud Run deployed.
 
