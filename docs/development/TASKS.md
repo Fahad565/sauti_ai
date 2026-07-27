@@ -34,144 +34,96 @@ Acceptance Criteria:
 - [x] Tests pass
 - [x] PR merged
 
+## Feature 1.1 — LangGraph Agent Skeleton
+
+Status:
+✅ Complete
+
+Merged into:
+develop
+
+Acceptance Criteria
+
+- [x] Graph compiles
+- [x] Placeholder nodes
+- [x] StateGraph created
+- [x] Smoke tests
+- [x] PR merged
+
 # Project Status
 
 Current Sprint:
-Sprint 1 — Agent Skeleton
-
-Current Epic:
-AI Agent Foundation
+Sprint 2 — LLM Integration
 
 Current Feature:
-LangGraph Agent Skeleton
+Gemma 4 Integration
 
 Current Branch:
-feature/agent-skeleton
+feature/gemma4-integration
 
 Status:
-� Code Complete — Pending Commit & PR
+🟢 Code Complete — Pending Commit & PR
 
 ---
 
-# EPIC 1 — AI Agent Foundation
+---
 
-Goal
-
-Create the skeleton architecture of the LangGraph agent.
-
-No AI reasoning should exist yet.
-
-Only project structure and graph wiring.
-
-## FEATURE 1.1 — Agent Skeleton
+## FEATURE 1.2 — Gemma 4 Integration
 
 Branch
 
-feature/agent-skeleton
+feature/llm-integration
 
 Objective
 
-## Create the initial LangGraph architecture that future intelligence will plug into.
+Connect the LangGraph agent to a real LLM while keeping the architecture
+clean and provider-agnostic.
 
 ### Tasks
 
-- [x] Install LangGraph
-- [x] Install LangChain Core
-- [x] Create app/agent/
-- [x] Create graph.py
-- [x] Create state.py
-- [x] Create nodes.py
-- [x] Create router.py
-- [x] Define AgentState
-- [x] Create placeholder nodes
-- [x] Build minimal graph
-- [x] Compile graph
-- [x] Add smoke test
-- [x] Verify graph compiles
+- [x] Configure NVIDIA API client
+- [x] Add NVIDIA API key configuration
+- [x] Create LLM service
+- [x] Implement Gemma 4 wrapper
+- [x] Replace placeholder analyze node
+- [x] Invoke Gemma from LangGraph
+- [x] Handle API failures
+- [x] Add integration tests
+- [x] Verify end-to-end graph execution
 - [ ] Commit feature
 
 ---
 
 ### Acceptance Criteria
 
-- Graph compiles successfully.
-- Placeholder nodes execute.
-- State flows through graph.
-- No LLM connected.
-- No tools connected.
-- No memory.
-- Tests pass.
+- [x] Gemma 4 responds successfully (verified via mock transport).
+- [x] Graph executes using the real LLM (via mocked NVIDIA endpoint).
+- [x] API key loaded from environment.
+- [x] Graceful error handling.
+- [x] Existing tests still pass.
+- [x] No tools connected.
+- [x] No memory connected.
 
 ---
 
 ### Expected Files
 
-app/agent/
+app/services/llm.py
 
-    __init__.py
-    graph.py
-    nodes.py
-    router.py
-    state.py
+app/config/settings.py
+
+app/agent/nodes.py
+
+tests/test_llm.py
+
+.env.example
 
 ---
 
 ### Definition of Done
 
-- Graph compiles.
+- LLM integrated.
 - Tests pass.
 - Commit created.
 - PR opened.
 - Merged into develop.
-- Development Cloud Run deployed.
-
----
-
-Status
-
-## 🟡 In Progress
-
-### Acceptance Criteria
-
-- FastAPI application starts successfully.
-- Root endpoint returns HTTP 200.
-- Swagger UI loads correctly.
-- Repository structure follows project conventions.
-- requirements.txt committed.
-- .env.example committed.
-- No AI logic exists.
-- No database exists.
-- No LangGraph exists.
-
----
-
-### Expected Files
-
-README.md
-
-requirements.txt
-
-.env.example
-
-app/main.py
-
-app/config.py
-
-.gitignore
-
----
-
-### Definition of Done
-
-- All acceptance criteria satisfied.
-- Local smoke test passes.
-- Git commit created.
-- Pull Request opened against develop.
-- Successfully merged into develop.
-- Automatically deployed to Development Cloud Run.
-
----
-
-Status
-
-🟡 In Progress
