@@ -2,69 +2,75 @@
 
 **Project:** Sauti AI
 
-**Date:** 2026-07-25
+**Date:** 2026-07-27
 
-**Session:** Bootstrap FastAPI project (Feature 0.1)
+**Session:** Sprint 1 — LangGraph Agent Skeleton (Feature 1.1)
 
 ---
 
 ## Current Status
 
-🟢 Feature 0.1 — Bootstrap FastAPI Project — **Complete (pending commit & PR)**.
+✅ Feature 0.1 Bootstrap FastAPI Project — Complete (merged into
+`develop` via PR #1; development deployment pending CI/CD).
 
-Foundation is in place: the FastAPI application boots, the root
-endpoint returns the agreed payload, and the automated test suite
-passes. No business logic has been introduced.
+🟢 Feature 1.1 LangGraph Agent Skeleton — Code complete; pending
+`git commit` and PR against `develop`.
 
-## Completed Today
+The agent graph compiles, every placeholder node executes in order,
+and the full `pytest` suite (7 tests) passes locally. No LLM, tool,
+or memory layer has been introduced.
 
-- Initialized Python virtual environment (`.venv/`, not tracked).
-- Installed and pinned `fastapi`, `uvicorn`, `python-dotenv`,
-  `pydantic-settings` (plus `pytest`, `httpx` for tests).
-- Created the `app/` package layout with sub-packages `api`, `config`,
-  `services`, `models`, `schemas`, `middleware`, `utils`, each with
-  a documented `__init__.py`.
-- Implemented `app/main.py` with a `create_app()` factory and the
-  `GET /` health endpoint.
-- Implemented `app/config/settings.py` using `pydantic-settings` with
-  a cached `get_settings()` accessor.
-- Authored `requirements.txt`, `.env.example`, and `.gitignore`.
-- Added smoke tests under `tests/` (`test_root.py`, `test_settings.py`).
-- Verified end-to-end: uvicorn boots, root endpoint returns
-  `{"service":"Sauti AI","status":"running"}` (HTTP 200), Swagger UI
-  loads at `/docs` (HTTP 200), OpenAPI schema is generated, and
-  `pytest` reports `3 passed`.
+## Completed Today (Sprint 1)
 
-## Files Changed
+- Installed and pinned `langgraph==1.2.9` and `langchain-core==1.5.1`.
+- Recorded the architectural decision in
+  `docs/development/DECISIONS.md` (`DECISION-0001`).
+- Created the `app/agent/` Python package with the following modules:
+  - `app/agent/__init__.py` — re-exports `build_graph` /
+    `compile_graph`.
+  - `app/agent/state.py` — `AgentState` TypedDict (input_message,
+    steps, response, metadata).
+  - `app/agent/nodes.py` — three placeholder nodes (`intake`,
+    `analyze`, `respond`) that append to `steps` and produce a stub
+    `response`.
+  - `app/agent/router.py` — `route_after_analyze` placeholder
+    returning `"respond"`.
+  - `app/agent/graph.py` — `build_graph()` and `compile_graph()`
+    factories wiring the linear
+    `intake → analyze → respond → END` flow with a conditional edge
+    after `analyze`.
+- Added `tests/test_agent_skeleton.py` with four smoke tests
+  covering compilation, node wiring, end-to-end execution, and the
+  empty-message edge case.
+- Updated `requirements.txt` to pin the two new dependencies.
+- Updated `TASKS.md` to tick every Sprint 1 task except the final
+  commit (still pending).
+
+## Files Changed (Sprint 1)
 
 - **Added**
-  - `app/__init__.py`
-  - `app/main.py`
-  - `app/api/__init__.py`
-  - `app/config/__init__.py`
-  - `app/config/settings.py`
-  - `app/services/__init__.py`
-  - `app/models/__init__.py`
-  - `app/schemas/__init__.py`
-  - `app/middleware/__init__.py`
-  - `app/utils/__init__.py`
-  - `tests/__init__.py`
-  - `tests/test_root.py`
-  - `tests/test_settings.py`
-  - `requirements.txt`
-  - `.env.example`
-  - `.gitignore` (populated)
-  - `docs/development/CHANGELOG.md` (populated)
+  - `app/agent/__init__.py`
+  - `app/agent/state.py`
+  - `app/agent/nodes.py`
+  - `app/agent/router.py`
+  - `app/agent/graph.py`
+  - `tests/test_agent_skeleton.py`
+- **Modified**
+  - `requirements.txt` (added `langgraph`, `langchain-core`)
+  - `docs/development/DECISIONS.md` (recorded `DECISION-0001`)
+  - `docs/development/TASKS.md` (Feature 1.1 task checkboxes ticked)
   - `docs/development/SESSION_HANDOFF.md` (this file)
+  - `docs/development/CHANGELOG.md` (Feature 1.1 entry)
 
 ## Current Branch
 
-`feature/foundation-project-setup`
+`feature/agent-skeleton`
 
 ## Current Commit
 
-`bf2912e Initial commit` (latest commit on branch — new files are
-untracked, ready for the first `feature/` commit).
+`202644b Merge pull request #1 from Fahad565/feature/foundation-project-setup`
+(latest commit on `develop`; new agent-skeleton files are untracked,
+ready for the first `feature/agent-skeleton` commit).
 
 ## Known Bugs
 
@@ -72,10 +78,14 @@ None.
 
 ## Next Task
 
-Open the first pull request for Feature 0.1 against `develop` once the
-working tree is reviewed, then begin **Feature 0.2 — Project
-Conventions & Tooling** (linting, formatting, type-checking, and
-pre-commit hooks) per the Sprint 0 roadmap in `TASKS.md`.
+1. Commit the new files on `feature/agent-skeleton` with a
+   conventional-commits message such as
+   `feat(agent): add LangGraph agent skeleton`.
+2. Open a PR against `develop`.
+3. Once merged, move on to **Sprint 2 — LLM Integration (Gemma 4)**:
+   introduce a real LLM-backed node and swap the placeholder
+   `analyze` body for an actual reasoning call (per
+   `docs/development/FEATURES.md`).
 
 ## Blocked
 
@@ -83,16 +93,20 @@ None.
 
 ## Notes for next session
 
-- `.venv/` is ignored by `.gitignore`; recreate locally with
-  `python3 -m venv .venv` followed by
-  `.venv/bin/pip install -r requirements.txt`.
-- `app.main.app` is the uvicorn target string
-  (`uvicorn app.main:app --reload`).
-- Configuration is read from environment variables and `.env` via
-  `pydantic-settings`; tests can override values by calling
-  `get_settings.cache_clear()` after setting env vars.
-- No AI logic, no database, and no LangGraph have been introduced,
-  in line with Epic 0 constraints.
-- The remaining empty docs files (`00_INDEX.md`, `CONVENTIONS.md`,
-  `DECISIONS.md`) should be populated in upcoming foundation
-  features.
+- The agent graph topology is:
+  `intake → analyze → (conditional) → respond → END`. The
+  conditional edge is in place but currently always selects
+  `respond`; future features can branch on classification results
+  without restructuring the graph.
+- No LLM key, API endpoint, or third-party tool is configured yet.
+  `app/agent/nodes.analyze_node` is still a pure placeholder and
+  Sprint 2 will be the first place to add an LLM call.
+- `app/agent.state.AgentState` uses `total=False` so future fields
+  (analysis results, memory references, tool outputs, urgency
+  scores, etc.) can be added without breaking the existing
+  skeleton tests.
+- `pydantic-settings` is still used for service configuration; the
+  agent itself does not yet read any new environment variables.
+- The `app.main` FastAPI surface is unchanged. The agent is
+  imported from `app.agent` and is ready to be wired into a route in
+  a future feature.

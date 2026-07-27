@@ -13,6 +13,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- LangGraph agent skeleton (Feature 1.1).
+- `app/agent/` Python package exposing `build_graph` and
+  `compile_graph`.
+- `app/agent/state.py` — typed `AgentState` TypedDict with
+  `input_message`, `steps`, `response`, `metadata`.
+- `app/agent/nodes.py` — three placeholder nodes (`intake`,
+  `analyze`, `respond`) that mutate state without any LLM call.
+- `app/agent/router.py` — `route_after_analyze` placeholder
+  returning `"respond"`.
+- `app/agent/graph.py` — `build_graph()` and `compile_graph()`
+  factories wiring `intake → analyze → (conditional) → respond → END`.
+- `tests/test_agent_skeleton.py` — 4 smoke tests covering
+  compilation, node wiring, end-to-end execution, and the
+  empty-message edge case.
+- New dependencies pinned in `requirements.txt`:
+  `langgraph==1.2.9`, `langchain-core==1.5.1`.
+- Architectural decision recorded in
+  `docs/development/DECISIONS.md` as `DECISION-0001`.
+
+### Verified
+
+- `from app.agent import compile_graph; compile_graph().invoke({...})`
+  completes successfully.
+- All three placeholder nodes execute in order:
+  `["intake", "analyze", "respond"]`.
+- The compiled graph is an instance of
+  `langgraph.graph.state.CompiledStateGraph`.
+- Full `pytest` suite passes (7 passed).
+- No LLM, tool, or memory layer is connected — Sprint 1 constraints
+  respected.
+
+---
+
+## [0.2.0] — 2026-07-27 — Agent Skeleton (pending release)
+
+### Added
+
 - Bootstrap FastAPI project skeleton (Feature 0.1).
 - `app/` Python package with sub-packages: `api`, `config`, `services`,
   `models`, `schemas`, `middleware`, `utils`.
