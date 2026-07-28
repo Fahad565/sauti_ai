@@ -7,6 +7,7 @@ to this file beyond the corresponding router import.
 
 from fastapi import FastAPI
 
+from app.api import twilio_router
 from app.config.settings import get_settings
 
 
@@ -37,6 +38,11 @@ def create_app() -> FastAPI:
         balancers, and human smoke tests.
         """
         return {"service": settings.service_name, "status": "running"}
+
+    # Register feature routers. Feature 1.3 ships the Twilio
+    # ingestion webhook; future features can append more routers
+    # here without touching the rest of the application factory.
+    app.include_router(twilio_router)
 
     return app
 

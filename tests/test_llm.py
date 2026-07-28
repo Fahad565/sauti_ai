@@ -65,16 +65,17 @@ def _settings_with_key(api_key: str = "test-key") -> Settings:
     """Build a Settings instance with the API key pre-populated.
 
     Bypasses :func:`get_settings` so the test never reads the real
-    ``.env`` file.
+    ``.env`` file. Pins the provider to NVIDIA so the factory
+    selects the NVIDIA backend (Sprint 4 multi-provider design).
     """
-    return Settings(nvidia_api_key=api_key)
+    return Settings(llm_provider="nvidia", nvidia_api_key=api_key)
 
 
 # --- GemmaClient unit tests -----------------------------------------
 
 
 def test_missing_api_key_raises_configuration_error() -> None:
-    settings = Settings(nvidia_api_key=None)
+    settings = Settings(llm_provider="nvidia", nvidia_api_key=None)
     client = GemmaClient(settings=settings, transport=httpx.MockTransport(lambda r: httpx.Response(200, json={})))
 
     with pytest.raises(LLMConfigurationError):
@@ -165,7 +166,17 @@ def test_missing_assistant_message_raises() -> None:
 # --- Singleton lifecycle ---------------------------------------------
 
 
-def test_get_llm_singleton() -> None:
+def test_get_llm_singleton(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Reset cached settings so the singleton uses our pinned
+    # NVIDIA provider (Sprint 4 multi-provider design).
+    from app.config.settings import get_settings
+
+    get_settings.cache_clear()
+    monkeypatch.setattr(
+        llm_module,
+        "get_settings",
+        lambda: Settings(llm_provider="nvidia", nvidia_api_key="singleton-test-key"),
+    )
     reset_default_llm()
     try:
         # Without an API key the singleton must still be created —
@@ -173,6 +184,7 @@ def test_get_llm_singleton() -> None:
         assert get_llm() is get_llm()
     finally:
         reset_default_llm()
+        get_settings.cache_clear()
 
 
 # --- analyze_node integration ---------------------------------------
@@ -210,10 +222,13 @@ def test_analyze_node_uses_stub_client() -> None:
     state = _initial_state()
 
     update = analyze_node(state, client=stub)  # type: ignore[arg-type]
-
+    # ``analyze_node`` returns ``dict[str, object]`` so Pylance sees
+    # ``object`` here. We narrow the metadata value at the test
+    # boundary to keep the type checker happy.
     assert update["steps"] == ["analyze"]
     assert update["analysis"] == "summary from stub"
-    assert update["metadata"]["analyze_model"] == "stub"
+    metadata: dict[str, str] = update["metadata"]  # type: ignore[assignment]
+    assert metadata["analyze_model"] == "stub"
     # The stub received both a system prompt and the user message.
     assert len(stub.calls) == 1
     assert [m.role for m in stub.calls[0]] == ["system", "user"]
@@ -227,7 +242,8 @@ def test_analyze_node_handles_llm_error() -> None:
 
     assert update["steps"] == ["analyze"]
     assert "analysis" not in update
-    assert "upstream 500" in update["metadata"]["analyze_error"]
+    metadata: dict[str, str] = update["metadata"]  # type: ignore[assignment]
+    assert "upstream 500" in metadata["analyze_error"]
 
 
 def test_analyze_node_handles_missing_key(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -235,12 +251,13 @@ def test_analyze_node_handles_missing_key(monkeypatch: pytest.MonkeyPatch) -> No
     degrades gracefully without raising."""
     import app.services.llm as module
 
-    monkeypatch.setattr(module, "get_settings", lambda: Settings(nvidia_api_key=None))
-    monkeypatch.setattr(module, "get_llm", lambda: module.GemmaClient(settings=Settings(nvidia_api_key=None)))
+    monkeypatch.setattr(module, "get_settings", lambda: Settings(llm_provider="nvidia", nvidia_api_key=None))
+    monkeypatch.setattr(module, "get_llm", lambda: module.GemmaClient(settings=Settings(llm_provider="nvidia", nvidia_api_key=None)))
 
     update = analyze_node(_initial_state(""))
 
-    assert "analyze_error" in update["metadata"]
+    metadata: dict[str, str] = update["metadata"]  # type: ignore[assignment]
+    assert "analyze_error" in metadata
 
 
 # --- Module exports --------------------------------------------------

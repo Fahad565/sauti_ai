@@ -195,3 +195,145 @@ API rate limits during development.
 Mitigation
 
 Keep all model access inside `app/services/llm.py`.
+
+## DECISION-0004 — Adopt Twilio WhatsApp Sandbox as the ingestion layer
+
+**Date:** 2026-07-28
+
+**Status:** Accepted
+
+**Context**
+
+Sprint 3 introduces the first real ingestion channel. Citizens
+submit complaints, suggestions, and development requests through
+WhatsApp (text, images, voice notes, documents). We need a
+provider whose webhook interface can deliver all of those formats
+into the LangGraph agent that Sprint 1–2 wired up.
+
+**Decision**
+
+Adopt the **Twilio WhatsApp Sandbox** as the development
+ingestion layer. Pin `twilio==9.10.9` in `requirements.txt`.
+
+The clean architecture in the draft (below) is implemented in
+this sprint:
+
+```text
+app/
+├── api/
+│   └── webhook.py     # FastAPI router exposing POST /webhooks/twilio
+├── services/
+│   ├── llm.py         # NVIDIA / Gemma 4 (Sprint 2)
+│   └── twilio.py      # Twilio payload parser + TwiML builder
+├── schemas/
+│   └── webhook.py     # Pydantic TwilioPayload model
+└── agent/             # LangGraph (Sprint 1)
+```
+
+Twilio's `MessagingResponse` (`twilio.twiml.messaging_response`)
+is used to build the TwiML body, keeping the wire format
+identical to what a production Twilio number would send.
+
+A future migration to Meta's WhatsApp Cloud API will only
+require replacing the parser + TwiML builder in
+`app/services/twilio.py`; the route, the agent, and the tests
+remain untouched.
+
+**Alternatives considered**
+
+| Option                         | Reason rejected                                                                                                                                    |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Meta WhatsApp Cloud API direct | Requires business verification and production-ready phone number before any local development; out of scope for the hackathon.                     |
+| Roll our own HTTP ingestion    | Reinventing Twilio's webhook contract; no value-add for Sprint 3.                                                                                  |
+| ngrok from day one             | ngrok is a _tunnel_, not a provider — it stays out of the dependency tree; the Sprint 3 feature only ingests HTTP, the user runs ngrok themselves. |
+
+**Consequences**
+
+- Positive: free sandbox; supports text, images, voice notes, and
+  documents out of the box.
+- Positive: Twilio's `MessagingResponse` guarantees the wire
+  format Twilio expects.
+- Positive: the agent layer is untouched; future migrations only
+  rewrite `app/services/twilio.py`.
+- Neutral: introduces one new top-level dependency (`twilio`),
+  recorded here per `AI_RULES.md`.
+- Neutral: also pulls in `python-multipart==0.0.32` as a FastAPI
+  sub-dependency required for parsing form-encoded webhook
+  payloads. Recorded here to satisfy `AI_RULES.md`.
+- Out of scope (deferred to later features): request signature
+  validation, outbound replies, media persistence, and conversation
+  memory.
+
+---
+
+## DECISION-0005 — Multi-provider LLM backend (Google primary, NVIDIA fallback)
+
+**Date:** 2026-07-28
+
+**Status:** Accepted
+
+**Context**
+
+Sprint 3's live testing showed that the NVIDIA free-tier endpoint
+returned HTTP 500 and occasional 60-second read timeouts when used
+from the Twilio webhook. The webhook is the only entry point for
+citizen feedback, so any provider outage directly blocks the
+service. The current `app/services/llm.py` couples business
+logic to NVIDIA's HTTP contract, making it impossible to swap
+providers without touching the agent layer.
+
+Sprint 4 introduces a provider-agnostic backend so that:
+
+- providers can be added without modifying business logic,
+- a Google primary path can absorb the load when NVIDIA is slow,
+- retry + backoff is centralized so transient failures no longer
+  crash the webhook,
+- the default provider can be flipped by env var alone.
+
+**Decision**
+
+Introduce a new `app.services.llm.providers` package with:
+
+- `base.LLMProvider` — abstract interface with
+  `generate(messages) -> ChatCompletion`,
+  `health_check() -> bool`,
+  `provider_name() -> str`.
+- `nvidia_provider.NvidiaProvider` — the existing NVIDIA httpx
+  implementation, extracted into its own module.
+- `google_provider.GoogleProvider` — new implementation using
+  the official `google-genai` SDK (`GOOGLE_API_KEY`).
+
+A `provider_factory.get_llm_provider(settings)` selects the
+provider at runtime based on `LLM_PROVIDER` (default `google`).
+The `GemmaClient` class (kept for back-compat with the Sprint 2
+public API) becomes a thin wrapper around an `LLMProvider`,
+translating `ChatMessage` / `ChatCompletion`.
+
+`LLM_TIMEOUT`, `LLM_MAX_RETRIES`, and `LLM_RETRY_DELAY` (new env
+vars) centralise retry behaviour via `retry.retry_with_backoff`,
+which retries on timeouts, 429, 5xx, and connection errors but
+**never** on validation errors.
+
+Pin `google-genai==2.14.0` in `requirements.txt`; the SDK is the
+official Google-published package that supersedes
+`google-generativeai`.
+
+**Alternatives considered**
+
+| Option | Reason rejected |
+| --- | --- |
+| Keep a single provider (NVIDIA only) | Direct contradiction of the observed reliability problem. |
+| Use `google-generativeai` (legacy SDK) | Superseded by `google-genai`; the latter is the supported package per Google's API docs. |
+| Hard-code the provider in `app/agent/nodes.py` | Re-couples business logic to a vendor; rejected. |
+
+**Consequences**
+
+- Positive: vendor-agnostic business logic.
+- Positive: centralised retry + timeout policy.
+- Positive: feature-flag providers via env var only.
+- Positive: webhook stays responsive during provider outages.
+- Neutral: adds `google-genai==2.14.0` as a dependency,
+  recorded here per `AI_RULES.md`.
+- Risk: `LLM_PROVIDER` misconfiguration could leave the service
+  with no working provider — the factory must raise a clear
+  `LLMConfigurationError` in that case.

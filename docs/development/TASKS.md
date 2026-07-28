@@ -50,16 +50,21 @@ Acceptance Criteria
 - [x] Smoke tests
 - [x] PR merged
 
+## Feature 1.2 - Gemma 4 Integration
+
+Status: Complete
+Merged into: develop
+
 # Project Status
 
 Current Sprint:
-Sprint 2 — LLM Integration
+Sprint 3 — Twilio Webhook Ingestion
 
 Current Feature:
-Gemma 4 Integration
+Twilio Webhook Ingestion
 
 Current Branch:
-feature/gemma4-integration
+feature/twilio-ingestion
 
 Status:
 🟢 Code Complete — Pending Commit & PR
@@ -68,62 +73,72 @@ Status:
 
 ---
 
-## FEATURE 1.2 — Gemma 4 Integration
+# FEATURE 1.3 — Twilio WhatsApp Ingestion
 
 Branch
 
-feature/llm-integration
+feature/twilio-ingestion
 
 Objective
 
-Connect the LangGraph agent to a real LLM while keeping the architecture
-clean and provider-agnostic.
+Receive incoming WhatsApp messages from Twilio Sandbox and
+forward them into the LangGraph agent.
 
 ### Tasks
 
-- [x] Configure NVIDIA API client
-- [x] Add NVIDIA API key configuration
-- [x] Create LLM service
-- [x] Implement Gemma 4 wrapper
-- [x] Replace placeholder analyze node
-- [x] Invoke Gemma from LangGraph
-- [x] Handle API failures
-- [x] Add integration tests
-- [x] Verify end-to-end graph execution
+- [x] Install Twilio SDK
+- [x] Create app/api/webhook.py
+- [x] Create app/services/twilio.py
+- [x] Create app/schemas/webhook.py
+- [x] Create POST /webhooks/twilio
+- [x] Parse Twilio payload
+- [x] Extract sender number
+- [x] Extract message body
+- [x] Invoke LangGraph graph
+- [x] Return TwiML response
+- [x] Add webhook tests
+- [x] Verify local webhook
 - [ ] Commit feature
 
 ---
 
-### Acceptance Criteria
+## Acceptance Criteria
 
-- [x] Gemma 4 responds successfully (verified via mock transport).
-- [x] Graph executes using the real LLM (via mocked NVIDIA endpoint).
-- [x] API key loaded from environment.
-- [x] Graceful error handling.
-- [x] Existing tests still pass.
-- [x] No tools connected.
-- [x] No memory connected.
+- [x] Webhook accepts POST requests.
+- [x] Twilio payload parsed correctly.
+- [x] Sender extracted.
+- [x] Message extracted.
+- [x] Graph invoked.
+- [x] Gemma response returned.
+- [x] Twilio receives valid TwiML.
+- [x] Tests pass.
 
 ---
 
 ### Expected Files
 
-app/services/llm.py
+app/api/webhook.py
 
-app/config/settings.py
+app/services/twilio.py
 
-app/agent/nodes.py
+app/schemas/webhook.py
 
-tests/test_llm.py
-
-.env.example
+tests/test_twilio_webhook.py
 
 ---
 
 ### Definition of Done
 
-- LLM integrated.
-- Tests pass.
-- Commit created.
-- PR opened.
-- Merged into develop.
+Webhook reachable locally
+
+Ngrok tunnel works
+
+Twilio Sandbox connected
+
+Graph invoked
+
+Gemma responds
+
+Tests pass
+
+PR merged
