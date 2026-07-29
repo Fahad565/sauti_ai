@@ -14,24 +14,30 @@ from __future__ import annotations
 import logging
 
 from app.agent.state import AgentState
+from app.services import llm as llm_module
 from app.services.llm import (
     ChatMessage,
     GemmaClient,
     LLMError,
-    get_llm,
 )
 
 logger = logging.getLogger(__name__)
 
 
-# System prompt for the analyze node. Kept here (rather than in a
-# configuration file) because it is part of the node contract for
-# this feature. Future features may move prompts into a dedicated
-# prompts module.
+# System prompt for the analyze node.
+#
+# Gemma 4 (per the model card) enables "thinking" when the system
+# prompt begins with the literal token ``<|think|>``. With thinking
+# enabled the model emits an internal reasoning block before the
+# final answer; we therefore pair this prompt with a small
+# ``max_tokens`` budget (see ``Settings.nvidia_max_tokens``) so the
+# reasoning fits inside the HTTP read timeout.
 ANALYZE_SYSTEM_PROMPT = (
+    "<|think|>"
     "You are Sauti AI, an assistant that analyzes citizen feedback "
-    "submitted to a Member of Parliament. Summarise the message, "
-    "identify any locations mentioned, and suggest a priority level."
+    "submitted to a Member of Parliament. Summarise the message in "
+    "two short sentences, identify any locations mentioned, and "
+    "suggest a priority level (low / medium / high)."
 )
 
 
@@ -61,13 +67,15 @@ def analyze_node(
 ) -> dict[str, object]:
     """LLM-backed analysis node.
 
-    Sends the inbound message to Gemma 4 and stores the assistant
-    reply in ``analysis``. Errors are caught and surfaced via
-    ``state["metadata"]["analyze_error"]`` so the graph remains
-    runnable in development environments without a configured
-    ``NVIDIA_API_KEY`` while still reporting what went wrong.
+    Sends the inbound message to the configured LLM provider and
+    stores the assistant reply in ``analysis``. Errors are caught
+    and surfaced via ``state["metadata"]["analyze_error"]`` so the
+    graph remains runnable in development environments without a
+    configured provider API key while still reporting what went
+    wrong.
 
-    Tests can pass a ``client=`` to inject a stub without going
+    Tests can pass a ``client=`` to inject any object with a
+    ``.complete(messages)`` method (duck-typed) without going
     through :func:`get_llm`.
     """
     message = state.get("input_message", "")
@@ -76,7 +84,7 @@ def analyze_node(
 
     metadata = dict(state.get("metadata", {}))
 
-    llm = client or get_llm()
+    llm = client or llm_module.get_llm()
     try:
         completion = llm.complete(
             [
@@ -92,11 +100,11 @@ def analyze_node(
         metadata["analyze_error"] = str(exc)
         return {"steps": steps, "metadata": metadata}
 
-    metadata["analyze_model"] = (
-        completion.raw.get("model", "unknown")
-        if isinstance(completion.raw, dict)
-        else "unknown"
+    raw = completion.raw if isinstance(completion.raw, dict) else {}
+    metadata["analyze_model"] = str(
+        raw.get("model", completion.model or "unknown")
     )
+    metadata["analyze_provider"] = completion.provider
     return {
         "steps": steps,
         "analysis": completion.text,

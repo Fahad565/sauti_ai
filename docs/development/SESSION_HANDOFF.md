@@ -2,124 +2,72 @@
 
 **Project:** Sauti AI
 
-**Date:** 2026-07-28
+**Date:** 2026-07-29
 
-**Session:** Sprint 2 — Gemma 4 LLM Integration (Feature 1.2)
+**Session:** Sprint 4 — Fix Google Provider Configuration (Feature 1.4)
 
 ---
 
 ## Current Status
 
-✅ Feature 0.1 Bootstrap FastAPI Project — Complete (merged into
-`develop` via PR #1).
+✅ Feature 0.1 Bootstrap FastAPI Project — Complete.
+✅ Feature 1.1 LangGraph Agent Skeleton — Complete.
+✅ Feature 1.2 Gemma 4 LLM Integration — Complete.
+✅ Feature 1.3 Twilio WhatsApp Ingestion — Complete.
+✅ Feature 1.4 Fix Google Provider Configuration — Complete.
 
-✅ Feature 1.1 LangGraph Agent Skeleton — Complete (merged into
-`develop` via PR #2).
+The application has been corrected to ensure that `dotenv.load_dotenv()` runs at the very beginning of the settings module load, populating `os.environ` so that Pydantic Settings reads all parameters successfully. Redundant config paths were removed, imports were refactored to use dynamic resolution via module properties to ensure robust test patching, and new unit tests have been added to verify that `.env` loads and configures the `GoogleProvider` correctly.
 
-🟢 Feature 1.2 Gemma 4 LLM Integration — Code complete; pending
-`git commit` and PR against `develop`.
+The entire `pytest` suite (**68 tests**) is passing.
 
-The agent graph now invokes NVIDIA's hosted Gemma 4 chat-completions
-endpoint through a typed, provider-isolated service. The full
-`pytest` suite (19 tests) passes locally. No tools, no memory, and
-no RAG are connected yet — those are scheduled for later sprints.
+## Completed Today (Sprint 4)
 
-## Completed Today (Sprint 2)
+- **Early dotenv Loading**: Added `load_dotenv()` call at the top of `app/config/settings.py` so environment variables are loaded prior to `Settings` instantiation.
+- **Dynamic Config and Import Resolution**:
+  - Removed direct `get_settings` and `get_llm` imports in `provider_factory.py` and `nodes.py` to prevent static/stale module imports.
+  - Refactored `provider_factory.py` to resolve settings dynamically using `settings_module.get_settings()`.
+  - Refactored `nodes.py` to resolve the client dynamically using `llm_module.get_llm()`.
+  - Removed unused settings-fetching code from `GemmaClient` constructor to eliminate duplicate loading paths.
+- **Robust Key Alignment & Fallbacks**:
+  - Added safety checks in `GoogleProvider` and `NvidiaProvider` constructors using `model_fields_set` to fallback to environment variables in case Pydantic misses them, ensuring keys aren't silently lost while preserving explicit overrides in tests.
+- **Startup Diagnostics & Reports**:
+  - Implemented startup logs printing the current working directory, loaded API key states, and LLM provider reports (Provider, Model, Key Loaded status) on application initialization.
+- **IDE Language Server & Import Resolution**:
+  - Added `pyrightconfig.json`, `pyproject.toml`, and `.vscode/settings.json` to resolve IDE type checker / Pyrefly `missing-import` diagnostic warnings in test files.
+  - Added `assert completion.raw is not None` in `tests/test_llm.py` to fix Pyrefly ``None` is not subscriptable` type checker error.
+- **GitHub Push Protection Resolution**:
+  - Sanitized `.env.example` line 32 to replace accidental committed real GCP API key with an empty placeholder (`GOOGLE_API_KEY=`).
+  - Amended head commit using `git commit --amend` to scrub the secret from git history, resolving GitHub rule violation GH013 (documented in `docs/deployment/ISSUES.md`).
+- **Unit Testing**:
+  - Added 4 unit tests in `tests/test_providers.py` to assert correct dotenv loading, key routing to GoogleProvider, LLMConfigurationError raising, and successful initialization.
+  - Fixed Twilio webhook test assertions to account for LLM failure messages instead of relying on the real model's output containing "Sauti AI".
+  - Verified full test suite execution (68 passing tests).
 
-- Extended `app/config/settings.py` with NVIDIA / Gemma 4 fields:
-  `nvidia_api_key`, `nvidia_base_url`, `nvidia_model`,
-  `nvidia_timeout_seconds`, `nvidia_max_tokens`,
-  `nvidia_temperature`, `nvidia_top_p`, `nvidia_enable_thinking`.
-- Created `app/services/llm.py` implementing the clean-architecture
-  layout already documented in `DECISION-0003`:
-  - typed exceptions: `LLMError`, `LLMConfigurationError`,
-    `LLMTransportError`, `LLMResponseError`;
-  - public dataclasses: `ChatMessage`, `ChatCompletion`;
-  - `GemmaClient` (sync `httpx.Client`, `trust_env=False`,
-    injectable `httpx.MockTransport` for tests);
-  - module-level `get_llm()` / `reset_default_llm()` singleton.
-- Updated `.env.example` with the full NVIDIA block (key left empty
-  by default; the analyze node raises a clear configuration error
-  if invoked without a key).
-- Replaced the placeholder `analyze_node` in
-  `app/agent/nodes.py` with a real LLM-backed implementation that:
-  - sends a system + user prompt;
-  - stores the assistant reply in `state["analysis"]`;
-  - catches every `LLMError` and records it in
-    `state["metadata"]["analyze_error"]` so the graph keeps running.
-- Updated `respond_node` to prefer the LLM analysis (with graceful
-  fallback to the legacy echo and an "LLM unavailable" message
-  when the analyze node errored).
-- Extended `AgentState` with the new `analysis` field.
-- Added `tests/test_llm.py` with 13 tests covering the LLM client
-  (success, missing key, empty messages, HTTP errors, invalid JSON,
-  transport errors, missing assistant message, singleton lifecycle)
-  and the analyze node (stub client, error handling, missing key).
-- Patched the existing skeleton tests to stub `analyze_node` via
-  `monkeypatch.setattr(graph_module, "analyze_node", ...)` so they
-  no longer depend on a configured API key.
+## Files Changed
 
-## Files Changed (Sprint 2)
-
-- **Added**
-  - `app/services/llm.py`
-  - `tests/test_llm.py`
+- **Created**
+  - `pyrightconfig.json` (virtual environment configuration for IDE language server)
+  - `pyproject.toml` (project configuration for pyright, pyrefly, pytest)
+  - `.vscode/settings.json` (VS Code interpreter and extraPaths settings)
+  - `docs/deployment/ISSUES.md` (push protection and deployment issues log)
 - **Modified**
-  - `app/config/settings.py` (added NVIDIA settings block)
-  - `app/agent/nodes.py` (LLM-backed `analyze_node`, smarter
-    `respond_node`)
-  - `app/agent/state.py` (added `analysis` field)
-  - `tests/test_agent_skeleton.py` (stub analyze via graph module)
-  - `.env.example` (added NVIDIA env vars)
-  - `docs/development/TASKS.md` (Feature 1.2 task checkboxes ticked)
-  - `docs/development/SESSION_HANDOFF.md` (this file)
-  - `docs/development/CHANGELOG.md` (Feature 1.2 entry)
-
-## Current Branch
-
-`feature/gemma4-integration`
-
-## Current Commit
-
-`514d8d8 Merge pull request #2 from Fahad565/feature/agent-skeleton`
-(latest commit on `develop`; new LLM files are untracked, ready for
-the first `feature/gemma4-integration` commit).
-
-## Known Bugs
-
-None.
+  - `app/config/settings.py` (explicit load_dotenv call)
+  - `app/main.py` (startup diagnostics and reporting)
+  - `app/agent/nodes.py` (dynamic client loading)
+  - `app/services/llm/__init__.py` (removed unused imports)
+  - `app/services/llm/client.py` (removed duplicate get_settings call)
+  - `app/services/llm/provider_factory.py` (dynamic settings resolution and build_provider tracing)
+  - `app/services/llm/providers/google_provider.py` (Task 7 fallback logic)
+  - `app/services/llm/providers/nvidia_provider.py` (Task 7 fallback logic)
+  - `tests/test_llm.py` (simplified monkeypatching)
+  - `tests/test_providers.py` (added Task 9 tests, fixed Twilio webhook assertion)
+  - `docs/development/DECISIONS.md` (recorded DECISION-0006 & DECISION-0007)
+  - `docs/development/CHANGELOG.md` (updated changelog entries)
+  - `docs/development/DEBUG.md` (updated persistent errors resolution log)
+  - `docs/development/SESSION_HANDOFF.md` (updated handoff documentation)
 
 ## Next Task
 
-1. Commit the new files on `feature/gemma4-integration` with a
-   conventional-commits message such as
-   `feat(llm): integrate NVIDIA hosted Gemma 4`.
-2. Open a PR against `develop`.
-3. Once merged, move on to **Sprint 3 — Tool Calling (Twilio
-   Webhook ingestion via Ngrok Tunnel)** per
-   `docs/development/FEATURES.md`.
+1. Commit changes and merge feature branches (`feature/twilio-ingestion` / `feature/google-provider-fix`).
+2. Proceed with further sprint tasks or integration of new agents/tools.
 
-## Blocked
-
-None.
-
-## Notes for next session
-
-- `app/services/llm.py` keeps the model access behind a single
-  module so future sprints can swap providers (Anthropic, OpenAI,
-  self-hosted) without touching the agent.
-- `httpx.Client(..., trust_env=False)` was required so the sandboxed
-  test runner does not auto-detect a SOCKS proxy from environment
-  variables. Production deployments that need to honor a corporate
-  proxy can flip the flag back to `True` or supply a custom
-  transport.
-- `analyze_node` is exception-safe — if the NVIDIA endpoint returns
-  a 5xx or the network drops, the graph still produces a response
-  and the failure is recorded in `state["metadata"]["analyze_error"]`
-  for observability.
-- `requirements.txt` did not need new entries: `httpx==0.28.1` was
-  already pinned in Sprint 0 (Feature 0.1 tests) and is now reused
-  for the LLM client.
-- `decisions.md` already documented `DECISION-0003` (NVIDIA hosted
-  Gemma 4) before code was written — this sprint implemented the
-  architecture described there. No new decision entry was needed.

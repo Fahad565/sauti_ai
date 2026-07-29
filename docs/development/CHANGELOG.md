@@ -11,6 +11,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Google Provider configuration initialization: Call `dotenv.load_dotenv()` explicitly at settings startup to ensure `.env` parameters populate `os.environ` beforehand.
+- Dynamic settings resolution and client imports: Resolved test suite monkeypatching fragility by calling `get_settings()` and `get_llm()` dynamically as module attributes.
+- Duplicate settings loading: Removed duplicate calls to `get_settings()` in `GemmaClient` constructor and `app/services/llm/__init__.py`.
+- Missing environment variable safety fallbacks: Added alignment fallback in `GoogleProvider` and `NvidiaProvider` constructors using `model_fields_set` checks.
+- Twilio webhook LLM-failure fallback assertion in tests.
+- IDE / LSP missing-import diagnostics: Added `pyrightconfig.json`, `pyproject.toml`, and `.vscode/settings.json` configuring `venvPath`, `extraPaths`, and `python.defaultInterpreterPath` pointing to `.venv`.
+- Secret scanning push protection: Sanitized `.env.example` to replace accidental committed API key with empty placeholder and amended commit to unblock GitHub push protection (`docs/deployment/ISSUES.md`).
+
+### Added
+
+- `docs/deployment/ISSUES.md` — deployment and push protection issues log.
+- `pyrightconfig.json`, `pyproject.toml`, `.vscode/settings.json` — workspace configuration for Pyrefly / Pyright / VS Code virtual environment path and interpreter resolution.
+- Startup diagnostics in `create_app` displaying CWD, loaded API keys, and active provider/model configurations.
+- Task 9 verification unit tests in `tests/test_providers.py` covering `.env` loading, key routing to provider, configuration error raises, and successful provider initialization.
+- Twilio WhatsApp ingestion webhook (Feature 1.3).
+- `app/schemas/webhook.py` — Pydantic `TwilioPayload` model with
+  snake*case accessors (`from*`, `body`, `num_media`, ...) backed
+by Twilio's PascalCase alias fields, plus `has_media()`and`media_summary()` helpers.
+- `app/services/twilio.py` — pure helpers `build_initial_state`,
+  `render_twiml_response` (via `twilio.twiml.messaging_response`),
+  and `parse_twiml_message` (test helper).
+- `app/api/webhook.py` — `POST /webhooks/twilio` accepting
+  form-encoded Twilio Sandbox payloads, invoking the compiled
+  LangGraph graph, and returning TwiML (`application/xml`) with
+  the agent reply. Always returns HTTP 200, even when the graph
+  raises (graceful fallback TwiML).
+- `app/main.py` — `create_app` now includes the Twilio router via
+  `app.include_router(twilio_router)`.
+- `app/api/__init__.py` and `app/schemas/__init__.py` — re-export
+  the new public symbols.
+- `tests/test_twilio_webhook.py` — 20 tests covering schema
+  validation, pure helpers, and the FastAPI route (happy path,
+  empty body, graph exception, media payload, unauthenticated,
+  minimum payload, one-invocation-per-request).
+- New dependency pinned in `requirements.txt`:
+  `twilio==9.10.9` plus the FastAPI sub-dependency
+  `python-multipart==0.0.32`.
+- Architectural decision recorded in
+  `docs/development/DECISIONS.md` as `DECISION-0004`.
+
+### Verified
+
+- Full `pytest` suite passes (41 passed).
+- Live `curl` smoke against `uvicorn app.main:app` returns
+  HTTP 200 with a valid TwiML body on the `/webhooks/twilio`
+  endpoint, both with and without an empty `Body`.
+- OpenAPI schema exposes `paths=['/', '/webhooks/twilio']`.
+- The real NVIDIA endpoint was reached end-to-end through the
+  webhook during the live smoke test (the model returned HTTP 500
+  on the test prompt, but the webhook still produced a graceful
+  TwiML fallback, exactly as designed).
+- No auth, no persistence, no Neon, no Redis, no LangGraph memory
+  introduced — Sprint 3 constraints respected.
+
+---
+
+## [0.4.0] — 2026-07-28 — Twilio Webhook Ingestion (pending release)
+
 ### Added
 
 - Gemma 4 LLM integration (Feature 1.2).
