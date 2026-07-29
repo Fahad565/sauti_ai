@@ -19,9 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Missing environment variable safety fallbacks: Added alignment fallback in `GoogleProvider` and `NvidiaProvider` constructors using `model_fields_set` checks.
 - Twilio webhook LLM-failure fallback assertion in tests.
 - IDE / LSP missing-import diagnostics: Added `pyrightconfig.json`, `pyproject.toml`, and `.vscode/settings.json` configuring `venvPath`, `extraPaths`, and `python.defaultInterpreterPath` pointing to `.venv`.
+- Secret scanning push protection: Sanitized `.env.example` to replace accidental committed API key with empty placeholder and amended commit to unblock GitHub push protection (`docs/deployment/ISSUES.md`).
 
 ### Added
 
+- `docs/deployment/ISSUES.md` — deployment and push protection issues log.
 - `pyrightconfig.json`, `pyproject.toml`, `.vscode/settings.json` — workspace configuration for Pyrefly / Pyright / VS Code virtual environment path and interpreter resolution.
 - Startup diagnostics in `create_app` displaying CWD, loaded API keys, and active provider/model configurations.
 - Task 9 verification unit tests in `tests/test_providers.py` covering `.env` loading, key routing to provider, configuration error raises, and successful provider initialization.

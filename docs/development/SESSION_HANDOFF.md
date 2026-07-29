@@ -35,6 +35,9 @@ The entire `pytest` suite (**68 tests**) is passing.
 - **IDE Language Server & Import Resolution**:
   - Added `pyrightconfig.json`, `pyproject.toml`, and `.vscode/settings.json` to resolve IDE type checker / Pyrefly `missing-import` diagnostic warnings in test files.
   - Added `assert completion.raw is not None` in `tests/test_llm.py` to fix Pyrefly ``None` is not subscriptable` type checker error.
+- **GitHub Push Protection Resolution**:
+  - Sanitized `.env.example` line 32 to replace accidental committed real GCP API key with an empty placeholder (`GOOGLE_API_KEY=`).
+  - Amended head commit using `git commit --amend` to scrub the secret from git history, resolving GitHub rule violation GH013 (documented in `docs/deployment/ISSUES.md`).
 - **Unit Testing**:
   - Added 4 unit tests in `tests/test_providers.py` to assert correct dotenv loading, key routing to GoogleProvider, LLMConfigurationError raising, and successful initialization.
   - Fixed Twilio webhook test assertions to account for LLM failure messages instead of relying on the real model's output containing "Sauti AI".
@@ -46,6 +49,7 @@ The entire `pytest` suite (**68 tests**) is passing.
   - `pyrightconfig.json` (virtual environment configuration for IDE language server)
   - `pyproject.toml` (project configuration for pyright, pyrefly, pytest)
   - `.vscode/settings.json` (VS Code interpreter and extraPaths settings)
+  - `docs/deployment/ISSUES.md` (push protection and deployment issues log)
 - **Modified**
   - `app/config/settings.py` (explicit load_dotenv call)
   - `app/main.py` (startup diagnostics and reporting)
