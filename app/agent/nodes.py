@@ -14,11 +14,11 @@ from __future__ import annotations
 import logging
 
 from app.agent.state import AgentState
+from app.services import llm as llm_module
 from app.services.llm import (
     ChatMessage,
     GemmaClient,
     LLMError,
-    get_llm,
 )
 
 logger = logging.getLogger(__name__)
@@ -84,7 +84,7 @@ def analyze_node(
 
     metadata = dict(state.get("metadata", {}))
 
-    llm = client or get_llm()
+    llm = client or llm_module.get_llm()
     try:
         completion = llm.complete(
             [

@@ -11,8 +11,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Google Provider configuration initialization: Call `dotenv.load_dotenv()` explicitly at settings startup to ensure `.env` parameters populate `os.environ` beforehand.
+- Dynamic settings resolution and client imports: Resolved test suite monkeypatching fragility by calling `get_settings()` and `get_llm()` dynamically as module attributes.
+- Duplicate settings loading: Removed duplicate calls to `get_settings()` in `GemmaClient` constructor and `app/services/llm/__init__.py`.
+- Missing environment variable safety fallbacks: Added alignment fallback in `GoogleProvider` and `NvidiaProvider` constructors using `model_fields_set` checks.
+- Twilio webhook LLM-failure fallback assertion in tests.
+- IDE / LSP missing-import diagnostics: Added `pyrightconfig.json`, `pyproject.toml`, and `.vscode/settings.json` configuring `venvPath`, `extraPaths`, and `python.defaultInterpreterPath` pointing to `.venv`.
+
 ### Added
 
+- `pyrightconfig.json`, `pyproject.toml`, `.vscode/settings.json` — workspace configuration for Pyrefly / Pyright / VS Code virtual environment path and interpreter resolution.
+- Startup diagnostics in `create_app` displaying CWD, loaded API keys, and active provider/model configurations.
+- Task 9 verification unit tests in `tests/test_providers.py` covering `.env` loading, key routing to provider, configuration error raises, and successful provider initialization.
 - Twilio WhatsApp ingestion webhook (Feature 1.3).
 - `app/schemas/webhook.py` — Pydantic `TwilioPayload` model with
   snake*case accessors (`from*`, `body`, `num_media`, ...) backed

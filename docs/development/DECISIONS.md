@@ -337,3 +337,56 @@ official Google-published package that supersedes
 - Risk: `LLM_PROVIDER` misconfiguration could leave the service
   with no working provider — the factory must raise a clear
   `LLMConfigurationError` in that case.
+
+---
+
+## DECISION-0006 — Centralized settings and environment initialization
+
+**Date:** 2026-07-29
+
+**Status:** Accepted
+
+**Context**
+
+During live testing, the Google Provider was unable to read the `GOOGLE_API_KEY` from the environment because the `.env` file was not loaded early enough into `os.environ` before Pydantic Settings instantiated the `Settings` class. Furthermore, the test suite and agent pipeline suffered from static/stale module imports which bypassed dynamic settings monkeypatching. 
+
+**Decision**
+
+1. Explicitly import and call `dotenv.load_dotenv()` at the very top of `app/config/settings.py` before `Settings` class definition to ensure environment variables are populated.
+2. Remove duplicate configuration calls to `get_settings()` in `GemmaClient` and `__init__.py`.
+3. Modify `provider_factory.py` to import `settings` as a module and call `settings_module.get_settings()` dynamically, ensuring mock values correctly override cached settings in tests.
+4. Modify `nodes.py` to import `llm` as a module and call `llm_module.get_llm()` dynamically, preventing stale function references during test execution.
+5. Implement safety fallback alignments in `GoogleProvider` and `NvidiaProvider` constructors using `model_fields_set` check to align the API keys with `os.environ` if Pydantic Settings missed them but they are defined in the environment.
+6. Introduce startup diagnostics in `create_app()` to output current working directory, loaded API key states, and LLM provider reports.
+
+**Consequences**
+
+- Positive: Google Provider successfully reads valid keys and connects to Google AI Studio.
+- Positive: Standardised dynamic imports for settings/clients across the application, resolving test suite fragility.
+- Positive: Improved visibility via startup diagnostics.
+- Neutral: No new dependencies were introduced.
+
+---
+
+## DECISION-0007 — Virtual environment path configuration for IDE language servers
+
+**Date:** 2026-07-29
+
+**Status:** Accepted
+
+**Context**
+
+IDE type checkers and diagnostics tools (such as Pyrefly and Pyright) were reporting `missing-import` errors for dependencies installed within `.venv` (e.g., `httpx`, `pytest`, `fastapi.testclient`) because the language server fell back to global system site-packages instead of the project virtual environment.
+
+**Decision**
+
+Add `pyrightconfig.json`, `pyproject.toml`, and `.vscode/settings.json` at the root of the project configuring:
+1. `venvPath = "."` and `venv = ".venv"` in `pyrightconfig.json` and `pyproject.toml`.
+2. Explicit `python.defaultInterpreterPath` (`${workspaceFolder}/.venv/bin/python`) and `python.analysis.extraPaths` (`.venv/lib/python3.13/site-packages`) in `.vscode/settings.json`.
+
+**Consequences**
+
+- Positive: Solves LSP / IDE / Pyrefly `missing-import` warnings across `tests/test_llm.py` and `tests/test_providers.py`.
+- Positive: Standardises Python language server interpreter resolution across VS Code and Pyrefly/Pyright development environments.
+- Neutral: No runtime dependencies added.
+

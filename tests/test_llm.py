@@ -20,7 +20,7 @@ import pytest
 
 from app.agent.nodes import analyze_node
 from app.agent.state import AgentState
-from app.config.settings import Settings
+from app.config.settings import Settings, get_settings
 from app.services import llm as llm_module
 from app.services.llm import (
     ChatCompletion,
@@ -32,6 +32,7 @@ from app.services.llm import (
     get_llm,
     reset_default_llm,
 )
+from app.services.llm.provider_factory import reset_default_provider
 
 
 # --- Helpers ---------------------------------------------------------
@@ -109,6 +110,7 @@ def test_successful_completion() -> None:
 
     assert isinstance(completion, ChatCompletion)
     assert completion.text == "This is Gemma 4 speaking."
+    assert completion.raw is not None
     assert completion.raw["model"] == "google/gemma-4-31b-it"
 
 
@@ -167,23 +169,33 @@ def test_missing_assistant_message_raises() -> None:
 
 
 def test_get_llm_singleton(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Reset cached settings so the singleton uses our pinned
-    # NVIDIA provider (Sprint 4 multi-provider design).
-    from app.config.settings import get_settings
+    """The cached default client must be a process-wide singleton.
+
+    Pins the provider to NVIDIA (Sprint 4 multi-provider design)
+    so the factory does not fall back to Google — which would
+    fail with a missing ``GOOGLE_API_KEY`` even when the singleton
+    itself is just being constructed.
+    """
+    import app.config.settings as settings_module
+    import app.services.llm.provider_factory as factory_module
 
     get_settings.cache_clear()
-    monkeypatch.setattr(
-        llm_module,
-        "get_settings",
-        lambda: Settings(llm_provider="nvidia", nvidia_api_key="singleton-test-key"),
+    reset_default_provider()
+
+    nvidia_settings = Settings(
+        llm_provider="nvidia", nvidia_api_key="singleton-test-key"
     )
+
+    monkeypatch.setattr(settings_module, "get_settings", lambda: nvidia_settings)
     reset_default_llm()
+
     try:
         # Without an API key the singleton must still be created —
         # the lazy check happens inside ``complete()``.
         assert get_llm() is get_llm()
     finally:
         reset_default_llm()
+        reset_default_provider()
         get_settings.cache_clear()
 
 
@@ -249,10 +261,17 @@ def test_analyze_node_handles_llm_error() -> None:
 def test_analyze_node_handles_missing_key(monkeypatch: pytest.MonkeyPatch) -> None:
     """With no API key, the global ``get_llm`` raises and the node
     degrades gracefully without raising."""
+    import app.config.settings as settings_module
     import app.services.llm as module
+    import app.services.llm.provider_factory as factory_module
 
-    monkeypatch.setattr(module, "get_settings", lambda: Settings(llm_provider="nvidia", nvidia_api_key=None))
-    monkeypatch.setattr(module, "get_llm", lambda: module.GemmaClient(settings=Settings(llm_provider="nvidia", nvidia_api_key=None)))
+    nvidia_settings = Settings(llm_provider="nvidia", nvidia_api_key=None)
+    monkeypatch.setattr(settings_module, "get_settings", lambda: nvidia_settings)
+    monkeypatch.setattr(
+        module,
+        "get_llm",
+        lambda: module.GemmaClient(settings=nvidia_settings),
+    )
 
     update = analyze_node(_initial_state(""))
 

@@ -18,7 +18,33 @@ def create_app() -> FastAPI:
     the entrypoint import-safe and makes the app easy to instantiate in
     tests without importing global module state.
     """
+    import os
+    from app.config.settings import get_settings
+
     settings = get_settings()
+
+    # Print startup diagnostics (Task 4)
+    print("=== STARTUP DIAGNOSTICS ===")
+    print(f"CWD: {os.getcwd()}")
+    print(f"OS ENV GOOGLE_API_KEY: {os.getenv('GOOGLE_API_KEY')}")
+    print(f"SETTINGS GOOGLE_API_KEY: {settings.google_api_key}")
+
+    # Startup diagnostic reporting (Task 8)
+    provider_name = settings.llm_provider
+    if provider_name == "google":
+        model = settings.google_model
+        key_loaded = "YES" if settings.google_api_key else "NO"
+    elif provider_name == "nvidia":
+        model = settings.nvidia_model
+        key_loaded = "YES" if settings.nvidia_api_key else "NO"
+    else:
+        model = "unknown"
+        key_loaded = "NO"
+
+    print(f"Provider: {provider_name.capitalize()}")
+    print(f"Model: {model}")
+    print(f"API Key Loaded: {key_loaded}")
+    print("===========================")
 
     app = FastAPI(
         title=settings.service_name,

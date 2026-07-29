@@ -6,9 +6,15 @@ class is a process-wide singleton obtained through
 :func:`get_settings` so all modules read consistent values.
 """
 
+import os
 from functools import lru_cache
 
+from dotenv import load_dotenv
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Load environment variables from .env file before Settings is instantiated (Task 2)
+load_dotenv()
+
 
 
 class Settings(BaseSettings):

@@ -57,19 +57,213 @@ Merged into: develop
 
 # Project Status
 
-Current Sprint:
-Sprint 3 — Twilio Webhook Ingestion
+# Sprint 4 – Resilient Multi-Provider LLM Backend
 
-Current Feature:
-Twilio Webhook Ingestion
+## Objective
 
-Current Branch:
-feature/twilio-ingestion
-
-Status:
-🟢 Code Complete — Pending Commit & PR
+Replace the current NVIDIA-only implementation with a provider-agnostic architecture that supports multiple LLM providers and gracefully handles failures.
 
 ---
+
+## Background
+
+The current webhook depends entirely on NVIDIA's hosted endpoint.
+
+Observed issues:
+
+- API latency occasionally exceeds 60 seconds.
+- Read timeout exceptions.
+- Webhook processing becomes slow.
+- Future providers cannot be added without modifying business logic.
+
+We are migrating to a provider abstraction.
+
+Google AI Studio (Gemini API) will become the primary provider.
+
+NVIDIA remains optional as a future fallback.
+
+---
+
+## Deliverables
+
+### 1. Provider Interface
+
+Create an abstract provider interface.
+
+Example:
+
+app/services/llm/providers/base.py
+
+Responsibilities:
+
+- generate()
+- health_check()
+- provider_name()
+
+Business logic must never depend on a specific vendor.
+
+---
+
+### 2. Google Provider
+
+Create
+
+app/services/llm/providers/google_provider.py
+
+Requirements
+
+- Use the official google-genai SDK.
+- Authenticate with GOOGLE_API_KEY.
+- Support configurable model names.
+- Return a normalized response object.
+- Raise custom exceptions on failures.
+
+---
+
+### 3. NVIDIA Provider
+
+Move the existing NVIDIA implementation into
+
+app/services/llm/providers/nvidia_provider.py
+
+No functional changes except conforming to the new provider interface.
+
+---
+
+### 4. Provider Factory
+
+Create
+
+app/services/llm/provider_factory.py
+
+Select provider using
+
+LLM_PROVIDER=google
+or
+
+LLM_PROVIDER=nvidia
+
+No application code should instantiate providers directly.
+
+---
+
+### 5. Configuration
+
+Extend Settings with:
+
+GOOGLE_API_KEY
+
+GOOGLE_MODEL
+
+LLM_PROVIDER
+
+LLM_TIMEOUT
+
+LLM_MAX_RETRIES
+
+LLM_RETRY_DELAY
+
+---
+
+### 6. Retry Logic
+
+Implement exponential backoff.
+
+Retry transient failures.
+
+Retry conditions:
+
+- Timeout
+- 429
+- 500
+- 502
+- 503
+- Connection errors
+
+Do not retry validation errors.
+
+---
+
+### 7. Graceful Failure
+
+The Twilio webhook must NEVER crash because of an LLM failure.
+
+If every provider fails:
+
+- Log the error.
+- Return a friendly TwiML response.
+- Return HTTP 200.
+
+---
+
+### 8. Logging
+
+Log:
+
+- provider
+- selected model
+- latency
+- retries
+- success/failure
+- exception type
+
+---
+
+### 9. Tests
+
+Create unit tests for:
+
+✓ Google provider
+
+✓ Provider factory
+
+✓ Retry logic
+
+✓ Timeout handling
+
+✓ Provider selection
+
+✓ Failure fallback
+
+✓ Twilio webhook degradation
+
+---
+
+### 10. Documentation
+
+Update:
+
+README.md
+
+ARCHITECTURE.md
+
+API.md
+
+CHANGELOG.md
+
+Describe:
+
+- Provider architecture
+- Configuration
+- Environment variables
+- Failure handling
+- Retry policy
+
+---
+
+## Acceptance Criteria
+
+✓ Business logic contains no vendor-specific code.
+
+✓ Provider can be changed using only environment variables.
+
+✓ Google AI Studio is the default provider.
+
+✓ Webhook remains responsive during provider failures.
+
+✓ All existing tests continue to pass.
+
+## ✓ New provider can be added by implementing the Provider interface without modifying existing business logic.
 
 ---
 
