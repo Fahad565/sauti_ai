@@ -43,3 +43,11 @@ logs/
 
 # OS
 Thumbs.db
+
+# Local SQLite database
+*.db
+
+# SQLite temporary files
+*.db-journal
+*.db-shm
+*.db-wal

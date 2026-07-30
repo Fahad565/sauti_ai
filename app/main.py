@@ -7,7 +7,7 @@ to this file beyond the corresponding router import.
 
 from fastapi import FastAPI
 
-from app.api import twilio_router
+from app.api import twilio_router, crud_router
 from app.config.settings import get_settings
 
 
@@ -65,12 +65,25 @@ def create_app() -> FastAPI:
         """
         return {"service": settings.service_name, "status": "running"}
 
-    # Register feature routers. Feature 1.3 ships the Twilio
-    # ingestion webhook; future features can append more routers
-    # here without touching the rest of the application factory.
+    # Initialize database tables and seed data (Sprint 4 Data Foundation)
+    try:
+        from app.db.session import SessionLocal, engine, Base
+        from app.db.seed import seed_database
+        Base.metadata.create_all(bind=engine)
+        db = SessionLocal()
+        try:
+            seed_database(db)
+        finally:
+            db.close()
+    except Exception as exc:
+        print(f"Database initialization warning: {exc}")
+
+    # Register feature routers.
     app.include_router(twilio_router)
+    app.include_router(crud_router)
 
     return app
+
 
 
 app = create_app()

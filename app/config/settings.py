@@ -37,6 +37,8 @@ class Settings(BaseSettings):
     version: str = "0.1.0"
     environment: str = "development"
     debug: bool = True
+    database_url: str = "sqlite:///./sauti_ai.db"
+
 
     # --- Multi-provider LLM backend (Sprint 4 / DECISION-0005) -----
     # ``LLM_PROVIDER`` selects the active backend. Supported values:
