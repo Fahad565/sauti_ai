@@ -40,7 +40,6 @@ def record_inbound_message(
         user = user_repo.get_or_create(phone_number=phone_number or "unknown", name=user_name)
         session = session_repo.get_or_create_active_session(user_id=int(user.id))  # type: ignore[arg-type]
 
-
         submission = submission_repo.create({
             "session_id": session.id,
             "user_id": user.id,
@@ -51,6 +50,11 @@ def record_inbound_message(
             "ward": user.ward,
             "status": "received",
         })
+
+        db.refresh(user)
+        db.refresh(session)
+        db.refresh(submission)
+        db.expunge_all()
 
         return user, session, submission
     finally:

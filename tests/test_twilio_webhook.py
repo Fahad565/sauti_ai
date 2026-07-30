@@ -18,11 +18,15 @@ The test suite covers:
      (``/webhooks/twilio``).
    - The endpoint is **unauthenticated** (no signature required).
 
-The tests stub the LangGraph graph so no network calls happen.
+Note: Tests run with ``WEBHOOK_ASYNC_MODE=false`` (synchronous mode)
+so the graph is invoked within the HTTP request lifecycle, making
+assertions on ``fake_graph.calls`` deterministic without needing to
+wait for background tasks.
 """
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 import pytest
@@ -48,14 +52,20 @@ from app.services.twilio import (
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def force_sync_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Force synchronous webhook mode so graph assertions are deterministic."""
+    monkeypatch.setenv("WEBHOOK_ASYNC_MODE", "false")
+    # Clear settings cache so the new env var is picked up.
+    from app.config.settings import get_settings
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
 @pytest.fixture
 def fake_graph(monkeypatch: pytest.MonkeyPatch):
-    """Replace ``compile_graph`` with a configurable fake.
-
-    The fake records every ``invoke`` call so the tests can assert
-    on the ``input_message`` and other state without needing a
-    real LangGraph runtime.
-    """
+    """Replace the pre-compiled ``_GRAPH`` in webhook with a configurable fake."""
 
     class _FakeGraph:
         def __init__(self) -> None:
@@ -74,10 +84,8 @@ def fake_graph(monkeypatch: pytest.MonkeyPatch):
             }
 
     fake = _FakeGraph()
-    # Patch where it is *used* (webhook module), not where it is
-    # defined (graph module). `from app.agent.graph import
-    # compile_graph` creates a local binding inside ``webhook``.
-    monkeypatch.setattr(webhook_module, "compile_graph", lambda: fake)
+    # Patch the pre-compiled module-level ``_GRAPH`` used by the handler.
+    monkeypatch.setattr(webhook_module, "_GRAPH", fake)
     return fake
 
 
@@ -201,7 +209,7 @@ def test_twilio_service_module_exports() -> None:
 
 
 # ---------------------------------------------------------------------------
-# FastAPI route tests
+# FastAPI route tests (sync mode)
 # ---------------------------------------------------------------------------
 
 
@@ -306,6 +314,45 @@ def test_webhook_invokes_graph_exactly_once_per_request(
 
 
 # ---------------------------------------------------------------------------
+# Async mode test
+# ---------------------------------------------------------------------------
+
+
+def test_webhook_async_mode_returns_empty_twiml_immediately(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """In async mode the webhook returns immediately with empty TwiML."""
+    monkeypatch.setenv("WEBHOOK_ASYNC_MODE", "true")
+    from app.config.settings import get_settings
+    get_settings.cache_clear()
+
+    class _FakeGraph:
+        def __init__(self) -> None:
+            self.calls: list[dict] = []
+
+        def invoke(self, state: dict) -> dict:
+            self.calls.append(state)
+            return {**state, "response": "grounded reply"}
+
+    fake = _FakeGraph()
+    monkeypatch.setattr(webhook_module, "_GRAPH", fake)
+    # Prevent real outbound delivery.
+    monkeypatch.setattr(webhook_module, "send_whatsapp_reply", lambda **_kw: False)
+
+    app = create_app()
+    with TestClient(app, raise_server_exceptions=False) as c:
+        response = c.post("/webhooks/twilio", data=_form_payload(Body="test async"))
+
+    assert response.status_code == 200
+    assert "<Response>" in response.text
+    # Async mode returns empty TwiML body (graph reply arrives via REST).
+    msg = parse_twiml_message(response.text)
+    assert msg == "" or msg is None or len(msg or "") == 0
+
+    get_settings.cache_clear()
+
+
+# ---------------------------------------------------------------------------
 # Router wiring test
 # ---------------------------------------------------------------------------
 
@@ -314,3 +361,150 @@ def test_twilio_router_re_exported() -> None:
     from app.api import twilio_router as reexported
 
     assert reexported is webhook_module.router
+
+
+# ---------------------------------------------------------------------------
+# Async-mode background-task regression (DECISION-0014 / DEBUG.md)
+# ---------------------------------------------------------------------------
+
+
+def test_async_mode_background_task_invokes_graph_and_outbound(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """In async mode the BackgroundTask must actually run the graph
+    AND call the outbound delivery function with the LLM reply.
+
+    Without this guarantee, async mode silently degenerates into a
+    no-op: the webhook returns empty TwiML and the citizen never
+    receives a WhatsApp message — the exact symptom described in
+    DEBUG.md.
+    """
+    monkeypatch.setenv("WEBHOOK_ASYNC_MODE", "true")
+    monkeypatch.setenv("TWILIO_ACCOUNT_SID", "AC_fake")
+    monkeypatch.setenv("TWILIO_AUTH_TOKEN", "tok_fake")
+    monkeypatch.setenv("TWILIO_FROM_NUMBER", "whatsapp:+14155238886")
+    from app.config.settings import get_settings
+
+    get_settings.cache_clear()
+
+    graph_calls: list[dict] = []
+    outbound_calls: list[dict] = []
+
+    class _FakeGraph:
+        def invoke(self, state: dict) -> dict:
+            graph_calls.append(dict(state))
+            return {**state, "response": "grounded reply"}
+
+    def _fake_outbound(*, to: str, body: str, **_: Any) -> bool:
+        outbound_calls.append({"to": to, "body": body})
+        return True
+
+    monkeypatch.setattr(webhook_module, "_GRAPH", _FakeGraph())
+    monkeypatch.setattr(webhook_module, "send_whatsapp_reply", _fake_outbound)
+
+    app = create_app()
+    with TestClient(app, raise_server_exceptions=False) as c:
+        response = c.post("/webhooks/twilio", data=_form_payload(Body="hi"))
+
+    # Webhook itself returns empty TwiML immediately.
+    assert response.status_code == 200
+    assert "<Response>" in response.text
+
+    # FastAPI TestClient drains BackgroundTasks before returning, so we
+    # can assert the side-effects deterministically here.
+    assert len(graph_calls) == 1, "graph must be invoked exactly once"
+    assert graph_calls[0]["input_message"] == "hi"
+
+    assert len(outbound_calls) == 1, (
+        "async mode must dispatch the LLM reply via Twilio REST — "
+        "otherwise DEBUG.md reproduction (no WhatsApp message) recurs."
+    )
+    assert outbound_calls[0]["to"] == "whatsapp:+254712345678"
+    assert outbound_calls[0]["body"] == "grounded reply"
+
+    get_settings.cache_clear()
+
+
+def test_async_mode_outbound_skipped_when_credentials_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """If Twilio REST credentials are absent the outbound function is
+    called (and reports False) so the failure is visible in logs
+    rather than silently swallowed.
+    """
+    monkeypatch.setenv("WEBHOOK_ASYNC_MODE", "true")
+    # Wipe REST credentials.
+    monkeypatch.delenv("TWILIO_ACCOUNT_SID", raising=False)
+    monkeypatch.delenv("TWILIO_AUTH_TOKEN", raising=False)
+    monkeypatch.delenv("TWILIO_FROM_NUMBER", raising=False)
+    from app.config.settings import get_settings
+
+    get_settings.cache_clear()
+
+    outbound_calls: list[dict] = []
+
+    def _fake_outbound(*, to: str, body: str, **_: Any) -> bool:
+        outbound_calls.append({"to": to, "body": body})
+        return False
+
+    monkeypatch.setattr(webhook_module, "_GRAPH", type("_G", (), {"invoke": lambda self, s: {**s, "response": "ok"}})())
+    monkeypatch.setattr(webhook_module, "send_whatsapp_reply", _fake_outbound)
+
+    app = create_app()
+    with TestClient(app, raise_server_exceptions=False) as c:
+        response = c.post("/webhooks/twilio", data=_form_payload())
+
+    assert response.status_code == 200
+    # Outbound was still attempted — the no-credentials path is loud.
+    assert outbound_calls == [
+        {"to": "whatsapp:+254712345678", "body": "ok"}
+    ], "send_whatsapp_reply must still be invoked when credentials are missing"
+
+    get_settings.cache_clear()
+
+
+def test_log_stage_timings_emits_total_line(caplog) -> None:
+    """The DEBUG.md call-out #1 ('time every stage') is satisfied by
+    a single structured log line per background run.
+    """
+    import logging
+
+    caplog.set_level(logging.INFO, logger="app.api.webhook")
+    webhook_module._log_stage_timings({"graph": 12.34, "persist_output": 0.01, "outbound": 0.05})
+
+    matching = [
+        r.message
+        for r in caplog.records
+        if "pipeline stage:" in r.message
+    ]
+    assert matching, "expected a 'pipeline stage:' log line"
+    line = matching[-1]
+    assert "graph=12.34s" in line
+    assert "persist_output=0.01s" in line
+    assert "outbound=0.05s" in line
+    assert "total=12.40s" in line
+
+
+# ---------------------------------------------------------------------------
+# DEBUG.md regression test — the user-reported failing message
+# ---------------------------------------------------------------------------
+
+
+def test_potholes_complaint_is_routed_as_complaint() -> None:
+    """The DEBUG.md failing prompt must be classified as a complaint,
+    not as a generic infrastructure lookup, so retrieval stays scoped
+    and the LLM prompt stays small.
+    """
+    from app.services.classifier import IntentClassifier
+
+    classifier = IntentClassifier()
+    result = classifier.classify(
+        "the road towards nyali from buxton is very poor with potholes"
+    )
+
+    assert result["intent"] == "complaint", (
+        f"expected complaint, got {result['intent']!r} "
+        f"(matches={result['keywords_matched']})"
+    )
+    assert "pothole" in result["keywords_matched"]
+    assert result["confidence"] >= 0.5

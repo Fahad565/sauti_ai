@@ -406,6 +406,7 @@ Prior to Sprint 4, Sauti AI functioned as a stateless conversational agent that 
 **Decision**
 
 Adopt SQLite with SQLAlchemy ORM (2.0+) and Alembic migrations as the core persistence layer. The database schema captures:
+
 - `users` (Citizens submitting complaints)
 - `sessions` (Conversation sessions)
 - `submissions` (Citizen complaints & feedback)
@@ -465,3 +466,301 @@ Pin `sqlalchemy==2.0.51` and `alembic==1.18.5` in `requirements.txt` to fulfill 
 - Positive: Enables typed ORM models, migration history tracking, and repository layer abstraction.
 - Neutral: Adds two dependencies to `requirements.txt`.
 
+## DECISION-0011
+
+Title
+
+Adopt Retrieval-Augmented Generation using SQL Retrieval
+
+Status
+
+Accepted
+
+Context
+
+The civic knowledge base now exists in SQL.
+
+LLM responses should reference factual constituency information instead of relying solely on model knowledge.
+
+Decision
+
+Implement Retrieval-Augmented Generation using SQLAlchemy repositories.
+
+Retrieved data will be assembled into structured prompts before invoking the LLM.
+
+No vector database will be introduced during the hackathon.
+
+Consequences
+
+Advantages
+
+- Deterministic
+- Explainable
+- Fast
+- Simple deployment
+- Uses existing persistence layer
+
+Tradeoffs
+
+- Keyword retrieval only
+- Semantic similarity deferred
+
+---
+
+## DECISION-0012 — Fix SQLAlchemy detached-instance session lifecycle in persistence service
+
+**Date:** 2026-07-30
+
+**Status:** Accepted
+
+**Context**
+
+Live Twilio webhook testing produced repeated log warnings:
+
+```
+Failed to persist inbound message:
+Instance <ConversationSession at 0x...> is not bound to a Session;
+attribute refresh operation cannot proceed
+```
+
+The root cause was that `record_inbound_message` in `app/services/persistence.py` created
+ORM objects (`User`, `ConversationSession`, `Submission`) inside an internal `SessionLocal()`
+scope, committed the transaction, then closed the session — returning the now-detached ORM
+instances to the caller (`webhook.py`). When the caller read `.id` or `.constituency`
+attributes after the session was closed, SQLAlchemy raised `DetachedInstanceError`.
+
+**Decision**
+
+After `db.commit()` and before `db.close()`, call:
+
+1. `db.refresh(user)` — materialises all lazy-loaded attributes into the object.
+2. `db.refresh(session)` — same for the conversation session.
+3. `db.refresh(submission)` — same for the submission record.
+4. `db.expunge_all()` — fully detaches all objects from the session in a safe state,
+   so that attribute access after `db.close()` reads cached data without re-querying.
+
+The webhook caller extracts primitive values (`user.id`, `submission.id`, `user.constituency`)
+immediately after `record_inbound_message` returns, while the objects are still populated.
+
+**Alternatives considered**
+
+| Option                                              | Reason rejected                                                               |
+| --------------------------------------------------- | ----------------------------------------------------------------------------- |
+| Return only IDs (primitives) from the service       | Breaks existing call sites and test contracts that check `user.phone_number`. |
+| Keep session open and pass it to the caller         | Leaks session lifecycle into the HTTP handler; complicates testing.           |
+| Use `expire_on_commit=False` on the session factory | Global config change; risky side-effects on other repository paths.           |
+
+**Consequences**
+
+- Positive: Eliminates `DetachedInstanceError` from the webhook logs.
+- Positive: Caller can safely read any scalar attribute after the session closes.
+- Positive: Added `test_record_inbound_message_detached_session_safety` regression test to guard this behaviour.
+- Neutral: One additional round-trip to DB per `refresh()` call (negligible for SQLite).
+
+---
+
+## DECISION-0013 — Constituency-entity extraction and weighted relevance scoring in RetrievalService
+
+**Date:** 2026-07-30
+
+**Status:** Accepted
+
+**Context**
+
+Live testing and DEBUG.md analysis revealed two retrieval quality issues:
+
+1. **Wrong constituency ranking**: A query for `"broken bridge in Likoni"` returned bridges
+   from Mvita, Nyali, Kisauni, Changamwe, and other constituencies ahead of Likoni,
+   because the old scoring function treated all keyword matches equally (`score += 1.0`
+   per match) with no constituency weighting.
+
+2. **No entity extraction**: The constituency name in the query (`"Likoni"`) was not
+   stripped from search keywords before SQL filtering — it polluted keyword scoring
+   and was searched as a plain token instead of being used as a SQL `WHERE` filter.
+
+**Decision**
+
+Implement two improvements in `app/services/retrieval.py`:
+
+**1. Entity extraction (`extract_constituency`):**
+A deterministic function that scans the raw query string against a list of known
+constituency names (`Likoni`, `Mvita`, `Nyali`, `Kisauni`, `Changamwe`, `Jomvu`).
+If a match is found, the constituency is stripped from keyword scoring and applied
+as the primary SQL `WHERE constituency = ?` filter before any keyword matching.
+
+**2. Weighted relevance scoring (`_compute_relevance_score`):**
+The scoring function now awards points by field significance:
+
+| Match type                                 | Score  |
+| ------------------------------------------ | ------ |
+| Constituency exact match                   | `+5.0` |
+| Constituency mismatch (other constituency) | `-2.0` |
+| Keyword in record name / title             | `+4.0` |
+| Keyword in record category / type          | `+2.0` |
+| Keyword in description / location          | `+1.0` |
+
+**3. Stop-word filtering (`clean_keywords`):**
+Common English stop words (`is`, `there`, `a`, `the`, `in`, `can`, `please`, etc.)
+are removed before keyword matching to reduce noise.
+
+**4. Fallback behaviour:**
+If a constituency-filtered query returns zero results (e.g., no hospital seeded
+in that constituency), the service re-queries across all constituencies to avoid
+silent empty responses.
+
+**Alternatives considered**
+
+| Option                                       | Reason rejected                                                                  |
+| -------------------------------------------- | -------------------------------------------------------------------------------- |
+| Vector similarity search (pgvector / Qdrant) | Out of scope for hackathon; deferred to post-Sprint 6.                           |
+| BM25 full-text indexing                      | Requires additional dependencies; SQL ILIKE is sufficient at this scale.         |
+| Named-Entity Recognition model               | Heavyweight; a simple keyword scan over 6 known names is deterministic and fast. |
+
+**Consequences**
+
+- Positive: `"Is there a hospital in Likoni?"` now correctly returns `Likoni Sub-County Hospital` as the top result.
+- Positive: `"Broken bridge in Likoni"` now correctly ranks `Likoni Floating Footbridge` first (score `9.0`) above all other constituencies.
+- Positive: Constituency is automatically extracted from free-text queries, enabling RAG grounding without requiring the caller to pass `constituency` explicitly.
+- Positive: Added regression tests `test_is_there_a_hospital_in_likoni` and `test_broken_bridge_in_likoni_ranks_likoni_first` in `tests/test_retrieval.py`.
+- Neutral: No new dependencies added.
+
+## DECISION-0014 — Async webhook with Twilio REST outbound delivery
+
+**Date:** 2026-07-30
+
+**Status:** Accepted
+
+**Context**
+
+Live WhatsApp sandbox testing captured the following failure mode:
+
+1. A simple contextual query like `"Is there a hospital in Likoni?"` reached
+   WhatsApp in ~16 s (slow but inside Twilio's webhook timeout).
+2. A complaint like `"the road towards nyali from buxton is very poor with
+potholes"` produced a webhook that _never_ returned 200 OK within Twilio's
+   wait window — Twilio displayed "Waiting to receive a response from your
+   server 46 seconds so far" and retried.
+3. Hitting "Replay" on ngrok inspect caused the request to return quickly
+   (DB warm, LLM warm, modules imported), but the response went only to the
+   ngrok inspector and never to WhatsApp.
+
+Root cause analysis showed two contributing factors:
+
+- **Synchronous LLM in the request loop.** The webhook invoked the
+  LangGraph pipeline (which calls Gemma / Gemini) inside the HTTP handler,
+  so Twilio's hard ~15 s webhook timeout was exceeded on cold starts.
+- **Optional/no outbound path.** The only path that returned TwiML back to
+  Twilio was the synchronous HTTP response. There was no fallback that
+  could deliver a reply _after_ the request had returned.
+
+The architectural fix is to acknowledge Twilio immediately (≤ 1 s, empty
+TwiML body), execute the pipeline asynchronously, and dispatch the final
+reply through the Twilio REST API.
+
+**Decision**
+
+Introduce async-mode webhook delivery:
+
+1. `webhook_async_mode: bool` flag in `Settings` (default `true`,
+   env `WEBHOOK_ASYNC_MODE`) toggles between modes without code changes.
+   - `true` → webhooks return empty TwiML immediately; the pipeline runs
+     in a FastAPI `BackgroundTasks` slot and the reply is sent via
+     `app.services.outbound.send_whatsapp_reply`.
+   - `false` → legacy synchronous path retained for local demos and tests
+     that want the agent reply inside the HTTP response body.
+2. `BackgroundTasks.add_task(_run_pipeline_and_reply, …)` schedules a
+   deterministic background coroutine that:
+   - builds the agent state,
+   - invokes the compiled LangGraph `_GRAPH`,
+   - persists `AgentAction` + `AISummary`,
+   - calls `send_whatsapp_reply(to, body, sid, token, from_number)`.
+3. `send_whatsapp_reply` (`app/services/outbound.py`) sends via
+   `twilio.rest.Client.messages.create`, prefixing both numbers with
+   `whatsapp:` and returning `False` (with a `logger.warning`) when any
+   of `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, or `TWILIO_FROM_NUMBER`
+   is missing — failures are loud, never silent.
+4. The webhook route always returns HTTP 200 in async mode (empty TwiML);
+   this satisfies Twilio's contract regardless of pipeline outcome.
+5. Sync mode stays untouched and continues to return a TwiML body inside
+   the response, so test fixtures and the OpenAPI surface are stable.
+6. Documented in `.env.example` that the three Twilio REST variables are
+   required for _outbound_ delivery, not for the webhook itself.
+
+**Alternatives considered**
+
+| Option                                      | Reason rejected                                                                                                                                         |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Always synchronous (wait for the LLM)       | The bug: Twilio's 15 s timeout; cold LLM starts (15–45 s) are common.                                                                                   |
+| Always reject slow webhooks / 503           | Twilio retries with the same payload, which causes duplicate `_GRAPH.invoke()` calls and duplicate outbound messages.                                   |
+| Twilio status callbacks + server push       | Requires public, authenticated storage of partial replies — overkill for the sandbox + adds a new dependency on Redis or a DB queue.                    |
+| Long-polling Twilio (`<Response>` deferral) | Twilio waits at most ~60 s; still brittle on cold LLM starts; requires Twilio-side `<Enqueue>` / TwiML verb gymnastics no cleaner than BackgroundTasks. |
+| Polling worker reading the DB               | Adds a new infra component; doesn't help Twilio see a fast 200 OK.                                                                                      |
+
+**Consequences**
+
+- Positive: Twilio sees a 200 OK in <1 s on every request, regardless of
+  pipeline latency. Citizen messages that took 40 s before now show up
+  in the user's WhatsApp after the model returns, via REST outbound.
+- Positive: Replay from ngrok no longer matters for normal delivery —
+  it's a debug affordance, not the primary reply path.
+- Positive: All test fixtures that assert sync behaviour (`fake_graph.calls`,
+  TwiML body matching) are unchanged; the async test `test_webhook_async_mode_returns_empty_twiml_immediately`
+  plus the new `test_async_mode_background_task_invokes_graph_and_outbound`
+  and `test_async_mode_outbound_skipped_when_credentials_missing` lock in the
+  ack + REST outbound guarantees.
+- Positive: Outbound failures are explicitly logged (`"send_whatsapp_reply:
+Twilio REST credentials not configured ... Skipping outbound message to"`)
+  so a missing env var surfaces immediately instead of silently dropping
+  the reply.
+- Neutral: Adds the `app/services/outbound.py` module and three new
+  `.env`-documented Twilio REST variables.
+
+**Operational note**
+
+The DEBUG.md symptom — _webhook returns 200 OK in ngrok but WhatsApp never
+receives the message_ — is the operational fingerprint of **async mode
+without Twilio REST credentials**. With this decision the fix is twofold:
+
+1. Architectural (above) — the code path is correct.
+2. Configuration — set `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, and
+   `TWILIO_FROM_NUMBER` in `.env`. If any of them is missing, the outbound
+   function logs a warning and returns `False`; the failure is loud,
+   not silent.
+
+## DECISION-0015 — Stage telemetry for webhook pipeline
+
+**Date:** 2026-07-30
+
+**Status:** Accepted
+
+**Context**
+
+DEBUG.md item #1 called out that every stage of the pipeline
+(persist → classify → retrieve → context → prompt → LLM → TwiML) needed
+its own wall-clock measurement so the actual bottleneck could be located
+without guessing. At the time of capture only fragmentary timing existed:
+the LangGraph nodes logged `⏱ <node>: …s` lines individually, but there
+was no consolidated per-request breakdown.
+
+**Decision**
+
+Introduce `_log_stage_timings(stages: dict[str, float])` in
+`app/api/webhook.py` that emits a single structured `INFO` line per
+pipeline run summarising every stage and the total, in the form:
+
+```
+pipeline stage: graph=12.34s persist_output=0.03s outbound=0.05s total=12.42s
+```
+
+Both async and sync modes emit this line, with the only difference being
+`outbound=0.00s` (render-only) in sync mode because the TwiML body is
+returned inline.
+
+**Consequences**
+
+- Positive: Production observability — a single grep on
+  `pipeline stage:` recovers every webhook's per-stage cost.
+- Positive: New unit test `test_log_stage_timings_emits_total_line` locks
+  in the log format so future edits cannot accidentally break log-scrapers.
+- Neutral: No new dependencies.
+- Neutral: ~6 lines of code in `app/api/webhook.py`.

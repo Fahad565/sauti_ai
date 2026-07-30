@@ -39,6 +39,18 @@ class Settings(BaseSettings):
     debug: bool = True
     database_url: str = "sqlite:///./sauti_ai.db"
 
+    # --- Async webhook mode (DECISION-0014) ------------------------
+    # When True the webhook returns empty TwiML immediately and the
+    # LLM pipeline runs in a FastAPI BackgroundTask, replying via
+    # the Twilio REST API. Requires TWILIO_ACCOUNT_SID,
+    # TWILIO_AUTH_TOKEN, and TWILIO_FROM_NUMBER to be set.
+    webhook_async_mode: bool = True
+
+    # --- Twilio REST credentials (outbound messaging) ---------------
+    twilio_account_sid: str | None = None
+    twilio_auth_token: str | None = None
+    twilio_from_number: str | None = None
+
 
     # --- Multi-provider LLM backend (Sprint 4 / DECISION-0005) -----
     # ``LLM_PROVIDER`` selects the active backend. Supported values:
