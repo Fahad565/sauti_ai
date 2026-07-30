@@ -23,6 +23,7 @@ from fastapi.responses import Response
 from app.agent.graph import compile_graph
 from app.agent.state import AgentState
 from app.schemas.webhook import TwilioPayload
+from app.services.persistence import record_agent_execution, record_inbound_message
 from app.services.twilio import build_initial_state, render_twiml_response
 
 logger = logging.getLogger(__name__)
@@ -74,12 +75,31 @@ async def twilio_webhook(
         payload.media_summary(),
     )
 
+    # Persist citizen message and session details (Sprint 4)
+    session_id: int | None = None
+    submission_id: int | None = None
+    try:
+        user, session, submission = record_inbound_message(
+            phone_number=payload.from_ or "unknown",
+            raw_content=payload.body,
+            user_name=payload.profile_name,
+            media_url=payload.media_url0,
+            media_type=payload.media_content_type0,
+        )
+        session_id = int(session.id)  # type: ignore[arg-type]
+        submission_id = int(submission.id)  # type: ignore[arg-type]
+    except Exception as exc:
+        logger.warning("Failed to persist inbound message: %s", exc)
+
     initial_state: AgentState = build_initial_state(payload)
     graph = compile_graph()
 
     try:
         final_state = graph.invoke(initial_state)
+        if session_id is not None and submission_id is not None:
+            record_agent_execution(session_id, submission_id, final_state)
     except Exception:  # noqa: BLE001 - last-resort safety net
+
         logger.exception("agent graph raised during webhook handling")
         fallback = (
             "Sauti AI is temporarily unavailable. "
@@ -93,6 +113,7 @@ async def twilio_webhook(
     reply = str(final_state.get("response") or "").strip() or (
         "Thank you, your message has been received."
     )
+
 
     return Response(
         content=render_twiml_response(reply),

@@ -320,11 +320,11 @@ official Google-published package that supersedes
 
 **Alternatives considered**
 
-| Option | Reason rejected |
-| --- | --- |
-| Keep a single provider (NVIDIA only) | Direct contradiction of the observed reliability problem. |
-| Use `google-generativeai` (legacy SDK) | Superseded by `google-genai`; the latter is the supported package per Google's API docs. |
-| Hard-code the provider in `app/agent/nodes.py` | Re-couples business logic to a vendor; rejected. |
+| Option                                         | Reason rejected                                                                          |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Keep a single provider (NVIDIA only)           | Direct contradiction of the observed reliability problem.                                |
+| Use `google-generativeai` (legacy SDK)         | Superseded by `google-genai`; the latter is the supported package per Google's API docs. |
+| Hard-code the provider in `app/agent/nodes.py` | Re-couples business logic to a vendor; rejected.                                         |
 
 **Consequences**
 
@@ -348,7 +348,7 @@ official Google-published package that supersedes
 
 **Context**
 
-During live testing, the Google Provider was unable to read the `GOOGLE_API_KEY` from the environment because the `.env` file was not loaded early enough into `os.environ` before Pydantic Settings instantiated the `Settings` class. Furthermore, the test suite and agent pipeline suffered from static/stale module imports which bypassed dynamic settings monkeypatching. 
+During live testing, the Google Provider was unable to read the `GOOGLE_API_KEY` from the environment because the `.env` file was not loaded early enough into `os.environ` before Pydantic Settings instantiated the `Settings` class. Furthermore, the test suite and agent pipeline suffered from static/stale module imports which bypassed dynamic settings monkeypatching.
 
 **Decision**
 
@@ -381,6 +381,7 @@ IDE type checkers and diagnostics tools (such as Pyrefly and Pyright) were repor
 **Decision**
 
 Add `pyrightconfig.json`, `pyproject.toml`, and `.vscode/settings.json` at the root of the project configuring:
+
 1. `venvPath = "."` and `venv = ".venv"` in `pyrightconfig.json` and `pyproject.toml`.
 2. Explicit `python.defaultInterpreterPath` (`${workspaceFolder}/.venv/bin/python`) and `python.analysis.extraPaths` (`.venv/lib/python3.13/site-packages`) in `.vscode/settings.json`.
 
@@ -389,4 +390,78 @@ Add `pyrightconfig.json`, `pyproject.toml`, and `.vscode/settings.json` at the r
 - Positive: Solves LSP / IDE / Pyrefly `missing-import` warnings across `tests/test_llm.py` and `tests/test_providers.py`.
 - Positive: Standardises Python language server interpreter resolution across VS Code and Pyrefly/Pyright development environments.
 - Neutral: No runtime dependencies added.
+
+---
+
+## DECISION-0008 — Adopt SQLite & SQLAlchemy ORM for Persistent Storage
+
+**Date:** 2026-07-30
+
+**Status:** Accepted
+
+**Context**
+
+Prior to Sprint 4, Sauti AI functioned as a stateless conversational agent that discarded every inbound WhatsApp message and AI analysis immediately after generating a response. This prevented longitudinal civic analytics, complaint tracking, MP dashboard visualisations, and historical reasoning across citizen interactions.
+
+**Decision**
+
+Adopt SQLite with SQLAlchemy ORM (2.0+) and Alembic migrations as the core persistence layer. The database schema captures:
+- `users` (Citizens submitting complaints)
+- `sessions` (Conversation sessions)
+- `submissions` (Citizen complaints & feedback)
+- `issues` (Extracted complaints & categories)
+- `clusters` (Grouped thematic issues & summaries)
+- `infrastructure` (Constituency assets across 6 constituencies)
+- `projects` (Constituency development projects)
+- `agent_actions` (Audit log of agent execution steps)
+- `ai_summaries` (Persisted AI analysis & reasoning)
+
+**Consequences**
+
+- Positive: Full historical persistence of citizen interactions and agent outputs.
+- Positive: Standardized repository abstraction (`app.repositories`) decoupling business logic from storage.
+- Positive: Automated schema migrations via Alembic.
+- Neutral: SQLite provides zero-config file-based storage suited for local development and hackathon evaluation; seamless path to PostgreSQL for production.
+
+---
+
+## DECISION-0009 — Seed Constituency Infrastructure & Projects Dataset
+
+**Date:** 2026-07-30
+
+**Status:** Accepted
+
+**Context**
+
+To evaluate the agent's capability to ground its responses and analysis in real local context, Sauti AI needs baseline knowledge of existing infrastructure assets and active constituency projects across all 6 target constituencies (Likoni, Mvita, Nyali, Kisauni, Changamwe, Jomvu).
+
+**Decision**
+
+Implement an automated database seed script (`app/db/seed.py`) populating 42 realistic infrastructure assets (Roads, Schools, Hospitals, Markets, Water points, Boreholes, Bridges) and 18 constituency projects (Ongoing, Planned, Completed), alongside initial citizen users and complaints.
+
+**Consequences**
+
+- Positive: Gemma LLM and LangGraph agents can query real local assets and projects to ground responses.
+- Positive: Provides instant sample data for MP analytics and dashboard visualizations.
+
+---
+
+## DECISION-0010 — Add SQLAlchemy and Alembic dependencies
+
+**Date:** 2026-07-30
+
+**Status:** Accepted
+
+**Context**
+
+Implementing relational database persistence and automated schema migrations required object-relational mapping and database migration tooling.
+
+**Decision**
+
+Pin `sqlalchemy==2.0.51` and `alembic==1.18.5` in `requirements.txt` to fulfill Sprint 4 Data Foundation requirements per `AI_RULES.md` rule 5.
+
+**Consequences**
+
+- Positive: Enables typed ORM models, migration history tracking, and repository layer abstraction.
+- Neutral: Adds two dependencies to `requirements.txt`.
 

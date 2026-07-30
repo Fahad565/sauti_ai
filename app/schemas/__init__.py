@@ -1,11 +1,37 @@
-"""Schemas package: request and response payload models.
-
-Re-exports the Pydantic models that describe the inbound
-webhook payloads. Keeping the package surface narrow lets call
-sites import everything they need from ``app.schemas`` without
-hard-coding internal submodule paths.
-"""
+"""Schemas package re-exporting Webhook and Domain API schemas."""
 
 from app.schemas.webhook import TwilioPayload
+from app.schemas.domain import (
+    UserCreate,
+    UserResponse,
+    SessionCreate,
+    SessionResponse,
+    SubmissionCreate,
+    SubmissionResponse,
+    IssueCreate,
+    IssueResponse,
+    InfrastructureCreate,
+    InfrastructureResponse,
+    ProjectCreate,
+    ProjectResponse,
+    ClusterCreate,
+    ClusterResponse,
+)
 
-__all__ = ["TwilioPayload"]
+__all__ = [
+    "TwilioPayload",
+    "UserCreate",
+    "UserResponse",
+    "SessionCreate",
+    "SessionResponse",
+    "SubmissionCreate",
+    "SubmissionResponse",
+    "IssueCreate",
+    "IssueResponse",
+    "InfrastructureCreate",
+    "InfrastructureResponse",
+    "ProjectCreate",
+    "ProjectResponse",
+    "ClusterCreate",
+    "ClusterResponse",
+]

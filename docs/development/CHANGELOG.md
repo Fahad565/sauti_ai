@@ -11,6 +11,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-07-30 — Data Foundation & Persistence
+
+### Added
+
+- Relational Database Schema & SQLAlchemy 2.0 ORM integration (`app/db/session.py`, `app/models/domain.py`).
+- Alembic database migration environment and initial schema migration (`alembic/`, `alembic/versions/68efad667dff_initial_schema_for_sprint_4_data_.py`).
+- Domain models: `User`, `ConversationSession`, `Submission`, `Issue`, `Cluster`, `Infrastructure`, `Project`, `AgentAction`, and `AISummary`.
+- Repository layer (`app/repositories/base.py`) providing clean data access for users, sessions, submissions, issues, infrastructure, projects, agent actions, and AI summaries.
+- Persistence service (`app/services/persistence.py`) hooking inbound Twilio WhatsApp webhook messages and agent outputs into the SQLite database.
+- Realistic seed dataset script (`app/db/seed.py`) populating 42 infrastructure items across 7 types (Roads, Schools, Hospitals, Markets, Water points, Boreholes, Bridges) and 18 projects (Ongoing, Planned, Completed) for 6 target constituencies (Likoni, Mvita, Nyali, Kisauni, Changamwe, Jomvu).
+- RESTful CRUD API router (`app/api/crud.py`) exposing endpoints under `/api/v1/users`, `/api/v1/submissions`, `/api/v1/infrastructure`, `/api/v1/projects`, `/api/v1/issues`, `/api/v1/sessions`, and `/api/v1/clusters`.
+- Pydantic domain schemas (`app/schemas/domain.py`) for API request validation and response serialization.
+- Comprehensive unit and integration test suite (`tests/test_database.py`, `tests/test_repositories.py`, `tests/test_crud_api.py`, `tests/test_persistence.py`), expanding test coverage to 78 passing tests.
+- Dependencies pinned in `requirements.txt`: `sqlalchemy==2.0.51`, `alembic==1.18.5`.
+- Architectural decisions recorded in `docs/development/DECISIONS.md`: `DECISION-0008` (SQLite + SQLAlchemy Persistence), `DECISION-0009` (Seed Constituency Data), `DECISION-0010` (Dependency additions).
+- Updated architecture documentation (`docs/architecture/DATABASE.md` with Mermaid ER diagram and table specs; `docs/architecture/ARCHITECTURE.md` with flowchart and system breakdown).
+
+### Verified
+
+- Full `pytest` suite passes (78 passed).
+- Database migrations and seed execution verified end-to-end.
+- RESTful CRUD endpoints return valid JSON responses for all entities.
+
+
 ### Fixed
 
 - Google Provider configuration initialization: Call `dotenv.load_dotenv()` explicitly at settings startup to ensure `.env` parameters populate `os.environ` beforehand.
