@@ -8,15 +8,11 @@ to the rest of the Sauti AI service:
   graph.
 - :func:`render_twiml_response` — wraps the graph's final reply in
   a Twilio-compatible TwiML ``<Response>`` document.
-
-Keeping these functions separate from the FastAPI router means
-they are easy to unit-test without spinning up a web server and
-easy to swap if we migrate from Twilio to Meta's WhatsApp Cloud API
-in a future feature.
 """
 
 from __future__ import annotations
 
+from typing import Optional
 from xml.etree import ElementTree as ET
 
 from twilio.twiml.messaging_response import MessagingResponse
@@ -25,13 +21,11 @@ from app.agent.state import AgentState
 from app.schemas.webhook import TwilioPayload
 
 
-def build_initial_state(payload: TwilioPayload) -> AgentState:
-    """Build the initial :class:`AgentState` from a webhook payload.
-
-    The text ``Body`` becomes ``input_message``. Sender and media
-    metadata are stored in ``metadata`` so downstream nodes can
-    read them later (without changing the ``AgentState`` schema).
-    """
+def build_initial_state(
+    payload: TwilioPayload,
+    constituency: Optional[str] = None,
+) -> AgentState:
+    """Build the initial :class:`AgentState` from a webhook payload."""
     metadata: dict[str, str] = {
         "from": payload.from_,
         "message_sid": payload.message_sid,
@@ -49,39 +43,25 @@ def build_initial_state(payload: TwilioPayload) -> AgentState:
         "steps": [],
         "response": "",
         "analysis": "",
+        "constituency": constituency,
         "metadata": metadata,
     }
 
 
 def render_twiml_response(message: str) -> str:
-    """Render a Twilio TwiML ``<Response>`` carrying ``message``.
-
-    Uses :class:`twilio.twiml.messaging_response.MessagingResponse`
-    so the wire format matches what Twilio expects on the wire.
-    The returned string is what the FastAPI handler returns with
-    ``media_type="application/xml"``.
-    """
+    """Render a Twilio TwiML ``<Response>`` carrying ``message``."""
     response = MessagingResponse()
     response.message(message or "")
-    # ``str(response)`` produces a UTF-8 XML document that includes
-    # the XML declaration. Tests assert both the structure and the
-    # body text.
     return str(response)
 
 
 def parse_twiml_message(twiml: str) -> str | None:
-    """Extract the first ``<Message>`` body from a TwiML document.
-
-    Used by the test suite to assert that the right reply was
-    rendered. Returns ``None`` if the document does not carry a
-    message body.
-    """
+    """Extract the first ``<Message>`` body from a TwiML document."""
     try:
         root = ET.fromstring(twiml)
     except ET.ParseError:
         return None
     for child in root:
-        # Strip the namespace if Twilio included it.
         tag = child.tag.split("}", 1)[-1]
         if tag.lower() == "message":
             return child.text or ""

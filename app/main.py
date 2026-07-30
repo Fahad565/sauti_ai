@@ -7,7 +7,7 @@ to this file beyond the corresponding router import.
 
 from fastapi import FastAPI
 
-from app.api import twilio_router, crud_router
+from app.api import twilio_router, crud_router, search_router
 from app.config.settings import get_settings
 
 
@@ -80,6 +80,7 @@ def create_app() -> FastAPI:
 
     # Register feature routers.
     app.include_router(twilio_router)
+    app.include_router(search_router)
     app.include_router(crud_router)
 
     return app

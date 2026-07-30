@@ -11,7 +11,79 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.5.0] — 2026-07-30 — Data Foundation & Persistence
+## [0.6.2] — 2026-07-30 — Async Webhook, Outbound REST, and Stage Telemetry
+
+### Fixed
+
+- **Twilio webhook timeout on slow LLM turns** (`app/api/webhook.py`, `app/services/outbound.py`, `app/config/settings.py`): The webhook now returns HTTP 200 with empty TwiML in <1 s and runs the LangGraph pipeline + outbound delivery inside a FastAPI `BackgroundTask`. The citizen reply is dispatched to WhatsApp via `twilio.rest.Client.messages.create(...)`. This eliminates the `"Waiting to receive a response from your server 46 seconds so far"` failure captured in `DEBUG.md` and stops the slow-complaint hangs that previously left WhatsApp with no reply. See DECISION-0014.
+- **Silent outbound drops** (`app/services/outbound.py`, `.env.example`): When `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_FROM_NUMBER` are unset the outbound function now logs `send_whatsapp_reply: Twilio REST credentials not configured ... Skipping outbound message to <number>` and returns `False` — failures are loud, never silent. `.env.example` was corrected: the legacy `TWILIO_WHATSAPP_NUMBER` (which the code never read) is now `TWILIO_FROM_NUMBER`, with a comment block explaining the DEBUG.md symptom (`ngrok 200 OK but no WhatsApp message`) maps to this exact misconfiguration.
+
+### Added
+
+- **`app/services/outbound.py`** — pure helper `send_whatsapp_reply(to, body, account_sid, auth_token, from_number) -> bool` that wraps `twilio.rest.Client.messages.create`, normalises the `whatsapp:` prefix on both numbers, and never raises (background tasks must not crash the server process).
+- **`webhook_async_mode` setting** (`app/config/settings.py`, `.env.example`): boolean flag (default `true`, env `WEBHOOK_ASYNC_MODE`) toggles async vs sync webhook delivery without code changes. Sync mode is retained for local demos and tests that want the agent reply inside the HTTP response body.
+- **Stage telemetry** (`app/api/webhook.py`, DECISION-0015): New `_log_stage_timings(stages: dict[str, float])` emits a single structured log line per pipeline run — `pipeline stage: graph=12.34s persist_output=0.03s outbound=0.05s total=12.42s` — exactly the breakdown DEBUG.md item #1 asked for. Both async and sync modes emit the line.
+- **Regression tests** (`tests/test_twilio_webhook.py`):
+  - `test_async_mode_background_task_invokes_graph_and_outbound` — asserts that in async mode the BackgroundTask actually runs the graph AND calls `send_whatsapp_reply` with the LLM reply (the guarantee DEBUG.md cares about).
+  - `test_async_mode_outbound_skipped_when_credentials_missing` — asserts the no-credentials path is loud (outbound is still attempted, returns False, logs a warning).
+  - `test_log_stage_timings_emits_total_line` — locks in the new structured log format.
+  - `test_potholes_complaint_is_routed_as_complaint` — pins the DEBUG.md failing prompt (`"the road towards nyali from buxton is very poor with potholes"`) to the `complaint` intent, so retrieval stays scoped and the LLM prompt stays small.
+
+### Verified
+
+- Full webhook test suite: **27/27 passed** (`tests/test_twilio_webhook.py`).
+- Full non-httpx-proxied suite: **64/64 passed** (`tests/` excluding `test_providers.py`, `test_rag.py`, `test_llm.py`; the 13 pre-existing failures in those three files are caused by a missing `socksio` module in this venv and are unrelated to this release — they were broken before any edits in this session).
+- `from app.api.webhook import _log_stage_timings; _log_stage_timings({"graph": 1.0})` emits the expected `pipeline stage:` log line.
+- The DEBUG.md potholes message is classified as `complaint` with confidence `0.95` and produces 4 retrieval matches (bounded context).
+- The DECISION-0014 async path documented in the source docstring matches the actual behaviour.
+
+### Operational follow-up (user-facing)
+
+If you ever observe `"ngrok returned 200 OK but WhatsApp never received a message"` again, check `.env` first — you need all three of `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` set. Without them the webhook behaves as designed but the reply is logged and dropped, which is exactly the symptom you saw before this release.
+
+---
+
+## [0.6.1] — 2026-07-30 — RAG Retrieval Quality & Session Lifecycle Fixes
+
+### Fixed
+
+- **SQLAlchemy Detached-Instance Error** (`app/services/persistence.py`): Calling `db.refresh()` on all three returned ORM objects (`user`, `session`, `submission`) and `db.expunge_all()` before closing the internal session eliminates the `DetachedInstanceError` that was logged on every inbound Twilio webhook request. See DECISION-0012.
+- **Constituency routing to agent graph** (`app/services/twilio.py`, `app/api/webhook.py`): `build_initial_state()` now accepts an optional `constituency` parameter; the webhook handler extracts `user.constituency` from the persisted user record and passes it into the graph's initial state so that `retrieval_node` correctly targets the citizen's registered constituency.
+
+### Improved
+
+- **Entity extraction** (`app/services/retrieval.py`): New `extract_constituency(text)` function deterministically identifies one of the 6 known constituency names (`Likoni`, `Mvita`, `Nyali`, `Kisauni`, `Changamwe`, `Jomvu`) from free-text queries and applies it as a primary SQL `WHERE constituency = ?` filter.
+- **Stop-word filtering** (`app/services/retrieval.py`): New `clean_keywords(text)` strips common English stop words before SQL keyword matching to reduce noise.
+- **Weighted relevance scoring** (`app/services/retrieval.py`): Rewrote `_compute_relevance_score()` with tiered field weighting — constituency match `+5.0`, mismatch `-2.0`, name/title keyword `+4.0`, category `+2.0`, description `+1.0` — replacing the flat `+1.0 per keyword` approach.
+- **Fallback retrieval**: If constituency-filtered query returns zero results, the service re-queries across all constituencies to prevent silent empty responses.
+- **RAG pipeline logging** (`app/agent/nodes.py`): Added structured `logger.info()` calls in `classify_node`, `retrieval_node`, `context_node`, and `analyze_node` — logging intent, constituency, retrieval counts, context length, and pre-LLM prompt metadata for production observability.
+- **Constituency auto-detection in classify_node**: `classify_node` now calls `extract_constituency()` on the inbound message and merges the result into agent state if not already set.
+
+### Verified
+
+- `"Is there a hospital in Likoni?"` → `Likoni Sub-County Hospital` (relevance score `9.0`) ✅
+- `"Broken bridge in Likoni"` → `Likoni Floating Footbridge` (relevance score `9.0`) ✅
+- No `DetachedInstanceError` on attribute access after `record_inbound_message()` closes its session.
+- Full `pytest` suite passes (101/101 passed).
+
+### Added
+
+- SQL Retrieval Service (`app/services/retrieval.py`): Implemented multi-entity search across infrastructure, projects, previous submissions, and categorized issues with keyword relevance scoring and SQL constituency filtering.
+- Context Builder (`app/services/context_builder.py`): Built structured Markdown prompt context generator with token/character limits and truncation controls.
+- Prompt Templates & Prompt Builder (`app/prompts/`, `app/services/prompt_builder.py`): Added external template files (`system_prompt.md`, `rag_prompt.md`, `summarizer_prompt.md`) and dynamic prompt rendering without hardcoded prompts.
+- Intent Classifier (`app/services/classifier.py`): Added rule-based and heuristic classification for citizen inquiries into standard intents (`infrastructure_lookup`, `project_lookup`, `complaint`, `status_update`, `general_question`) with confidence scoring.
+- LangGraph RAG Pipeline (`app/agent/`): Extended `AgentState` schema with RAG metadata, implemented `classify_node`, `retrieval_node`, `context_node`, and updated graph execution path to `intake` → `classify` → `retrieval` → `context` → `analyze` → `respond` → `END`.
+- RAG Pipeline Service (`app/services/rag.py`): Synchronous and agent-based RAG execution helper for easy invocation across API and CLI layers.
+- Search REST API Router (`app/api/search.py`): Exposed `/api/v1/search`, `/api/v1/projects/search`, and `/api/v1/infrastructure/search`.
+- Unit & Integration Test Suite (`tests/test_retrieval.py`, `tests/test_context_builder.py`, `tests/test_classifier.py`, `tests/test_rag.py`, `tests/test_search_api.py`): Expanded test coverage from 78 to 97 passing tests.
+- Architectural Decision recorded in `docs/development/DECISIONS.md` under `DECISION-0011`.
+- Comprehensive RAG architecture documentation in `docs/architecture/RAG.md`.
+
+### Verified
+
+- Full `pytest` suite passes (97 passed).
+- RAG end-to-end responses correctly ground answers in SQL database seed context.
+- Search REST APIs return ranked JSON search results.
 
 ### Added
 
@@ -33,7 +105,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Full `pytest` suite passes (78 passed).
 - Database migrations and seed execution verified end-to-end.
 - RESTful CRUD endpoints return valid JSON responses for all entities.
-
 
 ### Fixed
 

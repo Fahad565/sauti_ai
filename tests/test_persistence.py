@@ -56,10 +56,26 @@ def test_record_inbound_and_agent_execution(memory_db):
 
     record_agent_execution(int(session.id), int(submission.id), final_state, db=memory_db)  # type: ignore[arg-type]
 
-
     actions = memory_db.query(AgentAction).filter(AgentAction.submission_id == submission.id).all()
     summaries = memory_db.query(AISummary).filter(AISummary.submission_id == submission.id).all()
 
     assert len(actions) == 1
     assert len(summaries) == 1
     assert "Likoni Primary School" in summaries[0].summary_text
+
+
+def test_record_inbound_message_detached_session_safety():
+    """Verify that record_inbound_message when db is None returns expunged, detached safe objects."""
+    user, session, submission = record_inbound_message(
+        phone_number="+254799000111",
+        raw_content="Is there a hospital in Likoni?",
+        user_name="Amina",
+        db=None,  # Opens and closes internal session
+    )
+
+    # Reading attributes after session closure MUST NOT raise DetachedInstanceError
+    assert user.id is not None
+    assert session.id is not None
+    assert submission.id is not None
+    assert user.phone_number == "+254799000111"
+    assert submission.raw_content == "Is there a hospital in Likoni?"
