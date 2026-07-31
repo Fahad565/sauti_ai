@@ -56,3 +56,129 @@ Dashboard ---> Pending
 ✅ LangGraph RAG Pipeline (`intake` → `classify` → `retrieval` → `context` → `analyze` → `respond`)  
 ✅ Search REST APIs (`/api/v1/search`, `/api/v1/projects/search`, `/api/v1/infrastructure/search`)  
 ✅ Comprehensive Unit & Integration Test Suite (97/97 tests passing)
+
+
+## Sprint 6
+
+
+Feature 6.1
+Issue Classification
+
+Automatically classify every citizen submission into civic categories.
+
+Examples
+
+Roads
+
+Healthcare
+
+Water
+
+Education
+
+Markets
+
+Security
+
+Environment
+
+Housing
+
+Sanitation
+
+Transport
+
+Feature 6.2
+
+Duplicate Detection
+
+Identify reports describing the same issue.
+
+Example
+
+"There is a pothole"
+
+↓
+
+"Road full of potholes"
+
+↓
+
+Same incident.
+
+Feature 6.3
+
+Priority Scoring
+
+Estimate urgency.
+
+Levels
+
+Critical
+
+High
+
+Medium
+
+Low
+
+Feature 6.4
+
+Geographic Extraction
+
+Extract
+
+County
+
+Constituency
+
+Ward
+
+Landmarks
+
+Roads
+
+Facilities
+
+Feature 6.5
+
+Topic Tagging
+
+Assign multiple labels.
+
+Example
+
+Roads
+
+Flooding
+
+Bridge
+
+Safety
+
+Children
+
+Feature 6.6
+
+Trend Detection
+
+Aggregate submissions over time.
+
+Examples
+
+Increasing complaints
+
+Emerging hotspots
+
+Recurring failures
+
+Seasonal issues
+
+Feature 6.7
+
+Pipeline REST APIs
+
+Feature 6.8
+
+Pipeline Test Suite
+

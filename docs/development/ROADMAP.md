@@ -1,27 +1,29 @@
-# Sauti AI Project Roadmap
+✓ Sprint 1
+Agent Skeleton
 
-Sprint 1: Foundation ✅  
-Sprint 2: Gemma & Multi-Provider LLM ✅  
-Sprint 3: WhatsApp Webhook Ingestion ✅  
-Sprint 4: Data Foundation & Persistence ✅  
-Sprint 5: RAG & Multi-Agent Orchestration ⬜  
-Sprint 6: MP Analytics & Dashboard ⬜  
-Sprint 7: Hackathon Submission ⬜
+✓ Sprint 2
+Gemma Integration
 
-Sprint 0 ✓ Bootstrap
+✓ Sprint 3
+WhatsApp Integration
 
-Sprint 1 ✓ Agent
+✓ Sprint 4
+Database Layer
 
-Sprint 2 ✓ Gemma
+✓ Sprint 5
+Retrieval-Augmented Generation
 
-Sprint 3 ✓ WhatsApp
+➡ Sprint 6
+AI Intelligence Pipeline
 
-Sprint 4 ✓ Persistence
+Future
 
-Sprint 5 ← RAG
+Dashboard
 
-Sprint 6 AI Pipeline
+Analytics
 
-Sprint 7 Dashboard
+Notifications
 
-Sprint 8 Deployment
+Multi-agent orchestration
+
+Production Deployment

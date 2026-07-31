@@ -11,6 +11,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-07-31 — Sprint 6 AI Pipeline
+
+### Added
+
+- **Sprint 6 AI Pipeline orchestrator** (`app/services/pipeline_orchestrator.py`): stitches together six deterministic AI stages (classification, duplicate detection, priority scoring, geographic extraction, topic tagging, trend detection) behind a single `PipelineOrchestrator.run(text, constituency, include_trend)` call. The orchestrator is the shared entry point used by the webhook, the REST pipeline endpoints, and the dashboard.
+- **Feature 6.1 — Civic Classifier** (`app/services/civic_classifier.py`): deterministic, weight-based classifier that maps every citizen submission to one of ten canonical categories (Roads, Healthcare, Water, Education, Markets, Security, Environment, Housing, Sanitation, Transport). Returns `CivicClassification(category, confidence, matched_keywords, scores)`. See DECISION-0017.
+- **Feature 6.2 — Duplicate Detection** (`app/services/duplicate_detector.py`): `DuplicateDetector` blends token-set Jaccard and trigram-set Jaccard (50/50) with a configurable threshold (default 0.60), optional `constituency` filter, and a `time_window_days` cutoff. Returns `DuplicateDetectionResult(is_duplicate, best_match_id, best_similarity, threshold, matches)`. See DECISION-0018.
+- **Feature 6.3 — Priority Scoring** (`app/services/priority_scorer.py`): `PriorityScorer` combines five signals (urgency keywords, complaint vocabulary, category severity floor, duplicate pressure, and emphasis via CAPS / repetition) into a 4-level severity label (Critical / High / Medium / Low). Thresholds are constructor parameters so the dashboard can tune them without code changes. Returns `PriorityScore(level, score, category, signals, rationale)`. See DECISION-0019.
+- **Feature 6.4 — Geographic Extraction** (`app/services/geographic_extractor.py`): `GeographicExtractor` resolves county (defaults to Mombasa), constituency (one of the 6 known constituencies), ward, landmarks, roads, and facilities from a deterministic Mombasa gazetteer. Caller-supplied `fallback_constituency` is used only when nothing is found in the text. Returns `GeographicExtraction(...)` with a 0..1 confidence value. See DECISION-0020.
+- **Feature 6.5 — Topic Tagging** (`app/services/topic_tagger.py`): `TopicTagger` assigns multi-label topics (Roads, Flooding, Bridges, Water Supply, Sanitation, Safety, Children, Schools, Hospitals, Security, Markets, Environment, Housing, Transport) with per-tag scores. Longest-first matching prevents substring overlap (`"live wire"` wins over `"live"`). `min_score` and `max_tags` constants bound the output. See DECISION-0021.
+- **Feature 6.6 — Trend Detection** (`app/services/trend_detector.py`): `TrendDetector` aggregates the last `window_days` of submissions against a `compare_window_days` window and returns a `TrendReport` containing `total_volume`, `previous_volume`, `direction` (rising / falling / flat), `weekly_pulse` bucket histogram, `hotspots` (constituencies with delta >= 2), `recurring_failures` (similarity-clustered clusters), and `top_categories` keyword counts. See DECISION-0022.
+- **Feature 6.7 — AI Pipeline REST APIs** (`app/api/pipeline.py`, `app/schemas/pipeline.py`): eight new endpoints under `/api/v1/pipeline`:
+  - `GET /api/v1/pipeline/health` — liveness / version probe.
+  - `POST /api/v1/pipeline/run` — full orchestrator (`include_trend` opt-in).
+  - `POST /api/v1/pipeline/classify` — Feature 6.1 only.
+  - `POST /api/v1/pipeline/duplicates` — Feature 6.2 only.
+  - `POST /api/v1/pipeline/priority` — Feature 6.3 only.
+  - `POST /api/v1/pipeline/geography` — Feature 6.4 only.
+  - `POST /api/v1/pipeline/topics` — Feature 6.5 only.
+  - `GET /api/v1/pipeline/trends` — Feature 6.6 only.
+- **Feature 6.8 — Comprehensive Sprint 6 Test Suite** (91 new tests):
+  - `tests/test_civic_classifier.py` — 23 tests covering all 10 categories, empty-text fallback, confidence capping, and batch classification.
+  - `tests/test_duplicate_detector.py` — 10 tests covering exact, paraphrased, cross-constituency, and time-window edge cases.
+  - `tests/test_priority_scorer.py` — 12 tests covering emergency keywords, duplicate pressure, category floors, custom thresholds, and a strict ordering invariant (`Critical >= High >= Medium >= Low`).
+  - `tests/test_geographic_extractor.py` — 14 tests covering constituency, ward, road, landmark, facility, fallback, and confidence growth.
+  - `tests/test_topic_tagger.py` — 14 tests covering each tag, threshold, cap, and empty-text behaviour.
+  - `tests/test_trend_detector.py` — 8 tests covering empty-DB, rising, falling, hotspot, recurring-failure, weekly-pulse, top-categories, and JSON serialisation.
+  - `tests/test_pipeline_orchestrator.py` — 10 tests covering the eight pipeline endpoints and the full orchestrator.
+- **Sprint 6 architectural decisions** (`docs/development/DECISIONS.md`): DECISION-0017 through DECISION-0022 — one per pipeline stage.
+
+### Verified
+
+- All 91 new Sprint 6 tests pass.
+- Full project suite: **184 passed**, 13 pre-existing failures (the `socksio` httpx extra issue documented in SESSION_HANDOFF — environmental, unrelated to Sprint 6).
+- New router `app/api/pipeline.py` is wired into `app/main.py`; eight new paths visible in OpenAPI schema.
+- The DEBUG.md potholes prompt (`"the road towards nyali from buxton is very poor with potholes"`) correctly returns `Roads` category, `Nyali` constituency, `Roads` topic, and a priority level that reflects the complaint vocabulary.
+
+---
+
+## [0.7.1] — 2026-07-31 — Socksio fix + green-bar housekeeping
+
+### Fixed
+
+- **Pre-existing 13 test failures** (`tests/test_providers.py`, `tests/test_rag.py`, `tests/test_llm.py`): All 13 failures had the same root cause — `ImportError: Using SOCKS proxy, but the 'socksio' package is not installed.` The local sandbox exports `ALL_PROXY=socks5h://localhost:1080`, and httpx 0.28 auto-respects that env var. Installed `socksio==1.0.0` (the runtime Python SOCKS implementation that httpx builds on); pinned in `requirements.txt` per `AI_RULES.md` rule 5.
+- **`test_webhook_responds_200_when_every_provider_fails`** (`tests/test_providers.py`): The test was written before the async-webhook refactor (DECISION-0014). It assumed the TwiML body contained the LLM reply, but in async mode the HTTP body is empty TwiML and the reply is delivered via the outbound REST call. The test now monkeypatches `send_whatsapp_reply` so it never tries to reach `api.twilio.com` (also unreachable from the sandbox) and asserts that the stubbed outbound receives the `"LLM unavailable"` fallback produced by the always-failing LLM.
+
+### Added
+
+- **`socksio==1.0.0`** pinned in `requirements.txt`. See DECISION-0023.
+
+### Verified
+
+- Full pytest suite: **197 passed, 0 failed** (was 184 passed, 13 failed).
+
 ## [0.6.2] — 2026-07-30 — Async Webhook, Outbound REST, and Stage Telemetry
 
 ### Fixed

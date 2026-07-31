@@ -1,20 +1,33 @@
-# Sprint Tracking
+Sprint 6
 
-**Sprint Number:** Sprint 4  
-**Theme:** Data Foundation & Persistence  
-**Branch:** feature/data-layer  
-**Status:** ✅ Completed  
+Title:
+AI Pipeline
 
-## Goals Achieved
+Goal
 
-- [x] Relational Database Schema designed with 9 domain tables.
-- [x] SQLAlchemy 2.0 ORM integration & Alembic migrations initialized.
-- [x] Repository pattern implemented for clean data access.
-- [x] Persistent storage wired into Twilio WhatsApp webhook and agent execution flow.
-- [x] Realistic seed dataset populated for 6 constituencies (Likoni, Mvita, Nyali, Kisauni, Changamwe, Jomvu) across 7 infrastructure types and 3 project statuses.
-- [x] RESTful CRUD API endpoints exposed under `/api/v1/*`.
-- [x] Comprehensive test suite expanded (78 tests passing).
+Transform raw citizen submissions into structured civic intelligence that can
+drive dashboards, prioritization, analytics and MP decision support.
 
-## Next Sprint
+Duration
 
-**Sprint 5:** Retrieval (RAG), Multiagent Orchestration, AI Pipeline (Classification, Clustering, Prioritization)
+Sprint 6
+
+Deliverables
+
+✓ Issue Classification
+
+✓ Duplicate Detection
+
+✓ Severity Prediction
+
+✓ Geographic Extraction
+
+✓ Topic Tagging
+
+✓ Priority Scoring
+
+✓ Trend Detection
+
+✓ Pipeline APIs
+
+✓ Automated Testing

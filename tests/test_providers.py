@@ -461,6 +461,16 @@ def test_webhook_responds_200_when_every_provider_fails(
     )
     reset_default_llm()
 
+    # Stub out the outbound Twilio REST call so the test never tries
+    # to hit api.twilio.com (which is unreachable from the sandbox).
+    sent_payloads: list[dict] = []
+
+    def _fake_send_whatsapp_reply(to, body, account_sid, auth_token, from_number):
+        sent_payloads.append({"to": to, "body": body})
+        return True
+
+    monkeypatch.setattr(webhook_module, "send_whatsapp_reply", _fake_send_whatsapp_reply)
+
     response = twilio_client.post(
         "/webhooks/twilio",
         data={
@@ -474,7 +484,13 @@ def test_webhook_responds_200_when_every_provider_fails(
     assert "application/xml" in response.headers["content-type"]
     body = response.text
     assert "<Response>" in body
-    assert any(term in body for term in ("Sauti AI", "temporarily unavailable", "LLM unavailable"))
+    # In async mode the HTTP response body is empty TwiML; the LLM
+    # reply is dispatched to WhatsApp via the background task. Verify
+    # the stubbed outbound was called with the fallback text.
+    assert any(
+        "LLM unavailable" in p["body"] or "Sauti AI" in p["body"] or "received" in p["body"]
+        for p in sent_payloads
+    ), f"expected outbound to receive an LLM-unavailable reply, got {sent_payloads!r}"
 
 
 class _FakeGraphStub:
