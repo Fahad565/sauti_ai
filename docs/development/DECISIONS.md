@@ -764,3 +764,380 @@ returned inline.
   in the log format so future edits cannot accidentally break log-scrapers.
 - Neutral: No new dependencies.
 - Neutral: ~6 lines of code in `app/api/webhook.py`.
+
+## DECISION-0016
+
+Title
+
+Adopt Multi-stage AI Pipeline
+
+Decision
+
+Citizen reports shall pass through a sequence of deterministic AI stages:
+
+Classification
+
+Duplicate Detection
+
+Priority Scoring
+
+Geographic Extraction
+
+Topic Tagging
+
+Trend Aggregation
+
+Reason
+
+Separating these concerns improves explainability,
+testing,
+future model replacement,
+and dashboard analytics.
+
+---
+
+## DECISION-0017 — Civic Classifier (Sprint 6 Feature 6.1)
+
+**Date:** 2026-07-31
+
+**Status:** Accepted
+
+**Context**
+
+Sprint 6 requires that every citizen submission be classified into a
+canonical civic category (Roads, Healthcare, Water, Education, Markets,
+Security, Environment, Housing, Sanitation, Transport) so the MP
+dashboard can group, count, and prioritise feedback. The classifier
+must be deterministic, fast, and runnable from both the webhook and
+the REST pipeline APIs without any LLM calls.
+
+**Decision**
+
+Introduce `app/services/civic_classifier.py` with `CivicClassifier`:
+
+- A 10-element category list (`CIVIC_CATEGORIES`) aligned to the
+  FEATURES.md Sprint 6 deliverable.
+- A per-trigger, per-category weight dictionary
+  (`CATEGORY_KEYWORDS`) so multi-word phrases (`"no water"`) and
+  domain-specific keywords (`"classroom"`, `"ambulance"`) score
+  higher than incidental substrings.
+- A scoring loop that maps each non-empty text to a
+  `CivicClassification` dataclass with `category`, `confidence`,
+  `matched_keywords`, and a per-category `scores` map.
+- A safe default behavior — empty / whitespace-only / no-match texts
+  yield `Sanitation` with low confidence, so callers always get a
+  category.
+
+**Alternatives considered**
+
+| Option                                | Reason rejected                                                                |
+| ------------------------------------- | ------------------------------------------------------------------------------ |
+| Reuse the Sprint 5 `IntentClassifier` | It returns _intent_ (infrastructure_lookup, complaint, …), not civic category. |
+| LLM-based classification              | Adds latency, cost, and a dependency on external availability.                 |
+| Embeddings + nearest-neighbor         | Out of scope for the hackathon; vector DBs are a Sprint 7+ concern.            |
+
+**Consequences**
+
+- Positive: 10-category civic taxonomy is fixed, version-controlled, and deterministic.
+- Positive: Pure-Python, no I/O, no LLM — runs in microseconds.
+- Positive: `matched_keywords` is exposed for downstream explainability.
+- Positive: 23 unit tests in `tests/test_civic_classifier.py` lock the behaviour.
+- Neutral: Heuristic accuracy is bounded; future sprints may swap
+  for an LLM-based classifier without breaking the public API.
+
+---
+
+## DECISION-0018 — Duplicate Detection (Sprint 6 Feature 6.2)
+
+**Date:** 2026-07-31
+
+**Status:** Accepted
+
+**Context**
+
+Multiple citizens often report the same streetlight / pothole / borehole
+problem. The dashboard needs to count _unique_ incidents, not raw
+submissions, and the agent should know when a new complaint is just a
+re-statement of an existing one. We need a deterministic, DB-backed
+duplicate detector that runs cheaply on every inbound webhook.
+
+**Decision**
+
+Introduce `app/services/duplicate_detector.py` with `DuplicateDetector`:
+
+- Two complementary similarity signals: token-set Jaccard (vocabulary
+  overlap) and trigram-set Jaccard (capture word-order variants).
+- Combined similarity = `0.5 * token_jaccard + 0.5 * trigram_jaccard`.
+- Default threshold `0.60`; submissions with score `>=` threshold are
+  returned as matches.
+- Optional `constituency` filter restricts the candidate pool to a
+  citizen's home constituency (avoids matching Mombasa CBD reports
+  to Likoni reports).
+- `time_window_days` (default 30) bounds the candidate pool to
+  recent submissions, so the detector scales to multi-year datasets.
+
+**Alternatives considered**
+
+| Option                           | Reason rejected                                       |
+| -------------------------------- | ----------------------------------------------------- |
+| Pure embedding similarity        | Requires a vector DB; out of scope for the hackathon. |
+| Levenshtein distance on raw text | Punishes rephrasing too heavily; misses parity.       |
+| Hash on canonicalised text       | Misses paraphrases.                                   |
+| Only trigram Jaccard             | Loses high-signal keywords like "pothole".            |
+
+**Consequences**
+
+- Positive: Reproducible, explainable, runs in microseconds.
+- Positive: Returns a `DuplicateDetectionResult` with a list of
+  `DuplicateMatch` records so the dashboard can show "5 similar
+  reports".
+- Positive: 10 unit tests cover exact, paraphrased, cross-constituency,
+  and time-window edge cases.
+- Neutral: Threshold `0.60` may need tuning once production data is
+  available; it's an instance-level parameter.
+
+---
+
+## DECISION-0019 — Priority Scoring (Sprint 6 Feature 6.3)
+
+**Date:** 2026-07-31
+
+**Status:** Accepted
+
+**Context**
+
+The dashboard needs a 4-level severity label (Critical / High / Medium
+/ Low) for every submission. We cannot have an LLM in the hot path on
+every webhook, so the scorer must be deterministic and fast, while
+still capturing the difference between _"There is a fire at the
+school and children are trapped"_ and _"Hello there"_.
+
+**Decision**
+
+Introduce `app/services/priority_scorer.py` with `PriorityScorer`,
+which combines five signals:
+
+| Signal               | Source                                             |
+| -------------------- | -------------------------------------------------- |
+| `urgency`            | keywords like fire, flood, ambulance, gun, cholera |
+| `complaint`          | broken, leaking, uncollected, dirty, …             |
+| `category_floor`     | Healthcare=8, Security=8, Water=6, Roads=5, …      |
+| `duplicate_pressure` | `min(8, duplicate_count * 2)`                      |
+| `emphasis`           | ALL-CAPS rate + word repetition rate               |
+
+Final score is the sum of the five signals. The level is picked by
+thresholds (`Critical >= 12.0`, `High >= 7.0`, `Medium >= 5.0`,
+`Low >= 0.0`). The thresholds are constructor arguments so the
+dashboard can tune them without touching service code.
+
+**Alternatives considered**
+
+| Option                 | Reason rejected                                             |
+| ---------------------- | ----------------------------------------------------------- |
+| Single keyword density | Loses cross-signal richness (e.g. healthcare + duplicates). |
+| LLM severity score     | Adds latency + cost to every webhook.                       |
+| Learnt classifier      | Requires training data; not available for the hackathon.    |
+
+**Consequences**
+
+- Positive: Same priority level for the same text — fully reproducible.
+- Positive: `rationale` list explains _why_ a score is High or Critical.
+- Positive: 12 unit tests including a strict ordering invariant
+  (`Critical >= High >= Medium >= Low`).
+- Neutral: Tuned thresholds may need data-driven recalibration.
+
+---
+
+## DECISION-0020 — Geographic Extraction (Sprint 6 Feature 6.4)
+
+**Date:** 2026-07-31
+
+**Status:** Accepted
+
+**Context**
+
+Every citizen submission must be associated with a county,
+constituency, ward, and any landmark, road, or facility referenced in
+the text. The citizen's profile only knows the constituency; the agent
+needs to extract the rest from free text.
+
+**Decision**
+
+Introduce `app/services/geographic_extractor.py` with
+`GeographicExtractor`, backed by a curated gazetteer for Mombasa:
+
+- `COUNTIES` = `["Mombasa"]` (the gazetteer is Mombasa-only).
+- `CONSTITUENCIES` = the 6 known constituencies.
+- `WARDS` = 25 wards from the seed data and common civic references.
+- `LANDMARKS` / `ROADS` / `FACILITIES` = highest-visibility citizen
+  references, longest-first to defeat substring overlap.
+
+The extractor returns a `GeographicExtraction` with five fields and a
+`confidence` value. When the caller passes a `fallback_constituency`
+(e.g. `User.constituency`), it is used only when no constituency is
+found in the text itself.
+
+**Alternatives considered**
+
+| Option                     | Reason rejected                                           |
+| -------------------------- | --------------------------------------------------------- |
+| NER model from spaCy / HF  | Heavyweight dependency; overkill for a 25-ward gazetteer. |
+| Geocoding API              | Cost, latency, network dependency.                        |
+| Reverse geocoding from GPS | Citizens send raw text, not coordinates.                  |
+
+**Consequences**
+
+- Positive: Zero-network, deterministic, runs in microseconds.
+- Positive: 14 unit tests covering all five fields plus fallback.
+- Positive: Confidence score grows monotonically with the number of
+  signals filled in.
+- Neutral: Gazetteer is Mombasa-only; a future multi-county
+  deployment will need to extend the lists.
+
+---
+
+## DECISION-0021 — Topic Tagging (Sprint 6 Feature 6.5)
+
+**Date:** 2026-07-31
+
+**Status:** Accepted
+
+**Context**
+
+A single submission can belong to multiple topics (e.g. _"school
+children are crossing a dangerous road with potholes"_ → `Schools`,
+`Children`, `Roads`, `Safety`). The dashboard uses tags to filter
+for an MP's weekly brief, and the trend detector uses them to
+aggregate "this is the 5th similar complaint this week".
+
+**Decision**
+
+Introduce `app/services/topic_tagger.py` with `TopicTagger`. 14 tags
+are defined (`Roads`, `Flooding`, `Bridges`, `Water Supply`,
+`Sanitation`, `Safety`, `Children`, `Schools`, `Hospitals`,
+`Security`, `Markets`, `Environment`, `Housing`, `Transport`).
+
+Each tag has a per-trigger weight dictionary. Multi-word triggers
+are matched longest-first (so `"live wire"` wins over `"live"`).
+Tags are returned sorted by score descending, a `min_score` threshold
+drops noise, and a `max_tags` cap stops a noisy submission from
+flooding the dashboard with every topic.
+
+**Alternatives considered**
+
+| Option                           | Reason rejected                     |
+| -------------------------------- | ----------------------------------- |
+| Single-label classification      | Loses the multi-topic reality.      |
+| Hashtag extraction from WhatsApp | Citizens don't tag their messages.  |
+| TF-IDF / LDA                     | Heavyweight; needs training corpus. |
+
+**Consequences**
+
+- Positive: Multi-label output matches how a human would tag incidents.
+- Positive: 14 unit tests cover each tag plus threshold / cap behaviour.
+- Positive: `TopicTaggingResult.top_tag` exposes the head label for UI.
+- Neutral: Trigger weights are hand-tuned; future sprints may move
+  to a learned model.
+
+---
+
+## DECISION-0022 — Trend Detection (Sprint 6 Feature 6.6)
+
+**Date:** 2026-07-31
+
+**Status:** Accepted
+
+**Context**
+
+MPs need to know whether new submissions are ramping up, holding
+flat, or fading — and which constituencies are emerging as trouble
+spots. A simple count is not enough; the dashboard needs
+direction, hotspots, recurring failures, and a weekly pulse.
+
+**Decision**
+
+Introduce `app/services/trend_detector.py` with `TrendDetector`. The
+report contains:
+
+- `total_volume`, `previous_volume`, `direction` ("rising" /
+  "falling" / "flat") — ratio >= 1.20 is rising, <= 0.80 is falling.
+- `weekly_pulse` — bucket histogram of submissions across the window.
+- `hotspots` — constituencies whose current-window volume increased
+  by `>= 2` against the previous window.
+- `recurring_failures` — groups of submissions in the window whose
+  DuplicateDetector score is high (>= 0.55).
+- `top_categories` — substring keyword counts (`road`, `water`,
+  `hospital`, `school`, `garbage`, `pothole`, `flood`).
+
+The detector's time-window and compare-window are constructor
+parameters (`window_days`=7, `compare_window_days`=7 by default).
+
+**Alternatives considered**
+
+| Option                             | Reason rejected                                       |
+| ---------------------------------- | ----------------------------------------------------- |
+| Time-series forecasting (ARIMA, …) | Overkill for 7-day windows; needs more data.          |
+| Daily-only rollups                 | Misses cross-constituency hotspot emergence.          |
+| Pure SQL aggregation               | Cannot detect recurring failures (similarity needed). |
+
+**Consequences**
+
+- Positive: One engine, 8 unit tests, including rising / falling /
+  flat / hotspot / recurring-failure cases.
+- Positive: `to_dict()` is JSON-serialisable for the dashboard API.
+- Positive: Reuses `DuplicateDetector` for the recurring-failure
+  cluster grouping — no separate similarity implementation.
+- Neutral: Window choice is a dashboard-level decision; 7 days is
+  the default but can be overridden per call.
+
+---
+
+## DECISION-0023 — Install socksio to unblock 13 pre-existing test failures
+
+**Date:** 2026-07-31
+
+**Status:** Accepted
+
+**Context**
+
+The Sprint 7 housekeeping checklist (per `SESSION_HANDOFF.md`) called
+out that `tests/test_providers.py`, `tests/test_rag.py`, and
+`tests/test_llm.py` were failing with `ImportError: Using SOCKS proxy,
+but the 'socksio' package is not installed.` The failures had been
+flagged as environmental (out of scope for Sprint 5 / Sprint 6) but
+they corrupted the green-bar status of the full suite.
+
+Root cause: the local sandbox exports `ALL_PROXY=socks5h://localhost:1080`,
+and httpx 0.28 auto-respects that environment variable. Any code path
+that instantiates an `httpx.Client` against a SOCKS proxy triggers the
+import even when the test uses `MockTransport` for the wire layer.
+
+**Decision**
+
+1. Install `socksio==1.0.0` (the runtime Python SOCKS proxy
+   implementation that httpx ships its proxy support on). Recorded
+   in `requirements.txt` per `AI_RULES.md` rule 5.
+2. Patch `tests/test_providers.py::test_webhook_responds_200_when_every_provider_fails`
+   to monkeypatch `webhook_module.send_whatsapp_reply` so the test
+   never attempts to reach `api.twilio.com` (also unreachable from
+   the sandbox). The test now asserts that the stubbed outbound
+   receives the `"LLM unavailable"` reply, which is what the
+   async-mode webhook actually delivers in production.
+
+**Alternatives considered**
+
+| Option                                     | Reason rejected                                                                   |
+| ------------------------------------------ | --------------------------------------------------------------------------------- |
+| Unset `ALL_PROXY` in the test runner       | Fragile; the env var exists in production shells too.                             |
+| Pin `httpx<0.28` (no SOCKS support)        | Loses httpx 0.28 features; can't ship since 0.28 is the current required version. |
+| `httpx.Client(trust_env=False)` everywhere | Surfaces in every test fixture; bigger diff, lower value.                         |
+
+**Consequences**
+
+- Positive: Full pytest suite now **197 passed, 0 failed** (was 184 passed, 13 failed).
+- Positive: `socksio` is a tiny pure-Python runtime dependency (≈12 kB).
+- Positive: The webhook test now correctly asserts the production
+  behaviour (async mode → outbound REST) instead of the legacy
+  sync-mode behaviour the test was written for.
+- Neutral: One new top-level dependency, recorded in `requirements.txt`
+  and `DECISION-0023` per `AI_RULES.md` rule 5.
