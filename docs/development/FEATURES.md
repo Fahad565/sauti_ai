@@ -6,7 +6,8 @@ Sprint 2 — LLM Integration (Gemma 4 Integration) ---> Done
 Sprint 3 — Tool Calling (Twilio Webhook ingestion) ---> Done  
 Sprint 4 — Memory & Data Persistence ---> Done  
 Sprint 5 — Retrieval (RAG), Multiagent orchestration, AI Pipeline ---> Done  
-Dashboard ---> Pending
+Sprint 6 — MP Analytics & Dashboard ---> Done  
+Sprint 7 — Hackathon Submission ---> Pending (demo recording + cloud deploy)
 
 ---
 
@@ -56,3 +57,11 @@ Dashboard ---> Pending
 ✅ LangGraph RAG Pipeline (`intake` → `classify` → `retrieval` → `context` → `analyze` → `respond`)  
 ✅ Search REST APIs (`/api/v1/search`, `/api/v1/projects/search`, `/api/v1/infrastructure/search`)  
 ✅ Comprehensive Unit & Integration Test Suite (97/97 tests passing)
+
+## Sprint 6
+
+✅ Read-only dashboard analytics router (`/api/v1/dashboard/`) — overview, issues, infrastructure, projects, activity, pipeline preview  
+✅ Self-contained static SPA (`app/static/dashboard/`) — no build step, ES modules, hand-rolled SVG charts  
+✅ Dashboard pages — Overview, Issues Explorer, Projects, Infrastructure, AI Pipeline Visualizer, Analytics, Live Activity Feed  
+✅ Static SPA mount — FastAPI serves the dashboard at `/dashboard`  
+✅ 16 new regression tests (`tests/test_dashboard_api.py`); 80/80 total passing (excluding the 13 pre-existing socksio failures)

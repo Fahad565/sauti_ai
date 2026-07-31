@@ -2,9 +2,168 @@
 
 **Project:** Sauti AI
 
-**Date:** 2026-07-30
+**Date:** 2026-07-31
 
-**Session:** Sprint 5 Debug — RAG Retrieval Quality & SQLAlchemy Session Lifecycle (continued: async webhook, outbound REST, stage telemetry)
+**Session:** Sprint 8 — MP Dashboard Visual Refinements & Constituency Data Sync
+
+---
+
+## Current Status
+
+✅ Feature 0.1 Bootstrap FastAPI Project — Complete.  
+✅ Feature 1.1 LangGraph Agent Skeleton — Complete.  
+✅ Feature 1.2 Gemma 4 LLM Integration — Complete.  
+✅ Feature 1.3 Twilio WhatsApp Ingestion — Complete.  
+✅ Feature 1.4 Fix Google Provider Configuration — Complete.  
+✅ Feature 4.1 Relational Database Schema & SQLAlchemy ORM — Complete.  
+✅ Feature 4.2 Alembic Database Migrations — Complete.  
+✅ Feature 4.3 Repository Layer & Persistence Service — Complete.  
+✅ Feature 4.4 Realistic Constituency Seed Dataset — Complete.  
+✅ Feature 4.5 RESTful CRUD API Endpoints — Complete.  
+✅ Feature 5.1 Retrieval Service — Complete (Improved).  
+✅ Feature 5.2 Context Builder — Complete.  
+✅ Feature 5.3 Prompt Templates — Complete.  
+✅ Feature 5.4 Intent Classification — Complete.  
+✅ Feature 5.5 LangGraph RAG Pipeline — Complete (Instrumented).  
+✅ Feature 5.6 Search APIs — Complete.  
+✅ Feature 5.7 Comprehensive Test Suite — Complete.  
+✅ Feature 7.1 — Dashboard Shell (SPA sidebar + layout + router) — Complete.  
+✅ Feature 7.2 — Overview Page (KPI cards + constituency / category / priority / trend charts) — Complete.  
+✅ Feature 7.3 — Issues Explorer (search, filter, drill-down) — Complete.  
+✅ Feature 7.4 — Projects Explorer (status / budget / constituency filters) — Complete.  
+✅ Feature 7.5 — Infrastructure Explorer (type cards + search) — Complete.  
+✅ Feature 7.6 — AI Pipeline Visualizer (stage explainer + live simulator) — Complete.  
+✅ ~~Feature 7.7 — Analytics Page~~ — **Removed** (omitted per MP request).  
+✅ Feature 7.8 — Live Activity Feed (submissions + issues + agent actions + AI summaries) — Complete.  
+✅ **Feature 8.1 — White Background Modern Light Theme — Complete.**  
+✅ **Feature 8.2 — MP Constituency Single View & Topbar Badge — Complete.**  
+✅ **Feature 8.3 — Real-time Seed Data Sync & Multi-Constituency Enrichment — Complete.**  
+✅ **Feature 8.4 — Dashboard Bug Fixes (blur overlay, appendChild crash, Analytics removal, Issues sync) — Complete.**  
+
+**Full pytest suite passes: 17/17 on dashboard API tests.**
+
+The MP Dashboard is live at `/dashboard` immediately after `uvicorn app.main:app` boots. The static SPA is self-contained, has no build step, and the API is read-only.
+
+---
+
+## Completed Today (Sprint 8 — Dashboard Polish, Bug Fixes & Refinements)
+
+### 1. Dashboard Visual Theme Refinement (Light Mode)
+- Converted `app/static/dashboard/assets/styles.css` from dark mode to a crisp, high-contrast, professional light-mode aesthetic with a pure white background (`#ffffff`), subtle slate elevation (`#f8fafc`), clean borders (`#e2e8f0`), and vibrant teal/sky accent colors.
+- Updated SVG visualization helpers in `assets/ui.js` (donut charts, trend line charts, bar indicators) to render crisply against white backgrounds.
+
+### 2. MP Single Constituency Focus & Topbar Controls
+- Integrated an MP Badge (`🏛 Hon. MP Office`) and a constituency dropdown selector directly into the sticky topbar (`index.html`, `app.js`).
+- Defaulted the dashboard view to Likoni Constituency, while allowing the user to seamlessly switch between Likoni, Mvita, Nyali, Kisauni, Changamwe, Jomvu, or All Constituencies.
+- Extended backend API endpoints in `app/api/dashboard.py` (`/overview`, `/infrastructure/summary`, `/projects/summary`, `/activity`) to accept `constituency` query parameters and return SQL-filtered metrics.
+
+### 3. Database Seed Dataset Enrichment & Verification
+- Updated `app/db/seed.py` to seed 18 realistic citizen submissions, issues, AI summaries, and agent actions across all 6 target constituencies.
+- Executed database reseeding and verified that all cards, charts, issue lists, and live feeds are synchronized with database seed records.
+
+### 4. Resolution of Glass Overlay / Blur Issue
+- Diagnosed and resolved the blurry background issue captured in `DEBUG.md`: `.modal` CSS rule (`display: grid`, `position: fixed; inset: 0`, `backdrop-filter: blur(4px)`) had higher specificity than browser user-agent stylesheet rule for `[hidden]`.
+- Added `[hidden] { display: none !important; }` and `.modal[hidden] { display: none !important; }` to `styles.css`.
+- The dashboard now renders cleanly with sharp text, bright contrast, and no unwanted overlay blur.
+
+### 5. Feature 8.4 — Three-Fix Bug Patch (DEBUG.md Sprint 8 batch)
+- **"Failed to appendChild" crash** (`ui.js`): Rewrote `el()` and `svg()` helpers to use a safe recursive `appendChildren()` that correctly handles `Node` (including `SVGElement`), string, number, null, and boolean children — eliminating the `HierarchyRequestError` that appeared whenever a chart page was rendered.
+- **Analytics Page removed** (`app.js`, `index.html`): Removed the Analytics route import and nav link entirely. The SPA now has 6 pages (Overview, Issues, Projects, Infrastructure, AI Pipeline, Live Feed). The error handler is also hardened with a nested try/catch so bad renders never freeze the shell.
+- **Issues citizen name & timestamp sync** (`app/api/dashboard.py`): Issues endpoint now prefers `Submission.submitted_at` (real seed timestamp) as the primary `created_at` value, ensuring citizen name and submission time shown in the Issues table are accurate.
+
+
+### 2. Self-contained static SPA — `app/static/dashboard/`
+
+A hand-rolled, ES-module single-page app with no build step, no `node_modules`, no framework, no `npm install`:
+
+```
+app/static/dashboard/
+├── index.html                       # SPA shell, sidebar + content
+└── assets/
+    ├── styles.css                   # CSS custom properties, no preprocessor
+    ├── app.js                       # hash router, status indicator, page dispatcher
+    ├── api.js                       # fetch wrapper
+    ├── ui.js                        # DOM helpers, hand-rolled SVG charts
+    ├── overview.js                  # KPI cards + breakdowns
+    ├── issues.js                    # searchable / filterable table + drill-down
+    ├── projects.js                  # status / budget / constituency filters
+    ├── infrastructure.js            # type cards + search
+    ├── pipeline.js                  # AI pipeline stage explainer + live simulator
+    ├── analytics.js                 # full chart view
+    └── activity.js                  # merged live activity feed
+```
+
+Highlights:
+
+- **Hash router** (`#/overview`, `#/issues`, …) so refreshing any deep link works.
+- **Hand-rolled SVG charts** in `ui.js` — bar, donut, line — under 30 KB total JS for the whole SPA.
+- **Responsive sidebar** that collapses on screens narrower than 800 px, toggled by the hamburger button.
+- **Live status dot** in the sidebar footer that turns green when the backend is reachable and re-pings every 30 s.
+- **AI Pipeline Visualizer** lets the user pick a sample citizen message (or type their own), run the deterministic pipeline against it, and inspect every stage's intermediate state — including top retrieval matches with relevance scores and the assembled Markdown context the LLM would see.
+
+**Decision:** DECISION-0017.
+
+### 3. Static mount in `app/main.py`
+
+FastAPI now serves the dashboard at `/dashboard/index.html` and `/dashboard/assets/*` via `StaticFiles(html=True)`. No new build process — the dashboard is up the moment `uvicorn` boots.
+
+### 4. Regression tests — `tests/test_dashboard_api.py` (16 tests)
+
+Covers:
+
+- SPA mount (`/dashboard/index.html` returns 200, 2971 bytes).
+- Static assets (`app.js`, `styles.css`, `api.js`, `ui.js`, `overview.js`).
+- On-disk presence of the dashboard folder.
+- `/overview` cards + breakdowns + 6-constituency + 8-week trend.
+- `/issues` filter behaviour (constituency, category) and facet counts.
+- `/infrastructure/summary` and `/projects/summary` shapes.
+- `/activity` recent-entries shape.
+- `/pipeline/preview` — full stage order, intent + confidence, top retrieval matches, and the two demo prompts from `SPRINT.md` (hospital-in-Likoni returns `Likoni Sub-County Hospital`; potholes-on-the-Nyali-road classifies as `complaint` with `pothole` in keywords_matched).
+
+### 5. Verified end-to-end (live `uvicorn`)
+
+| Request                                                                                                                            | Result                                                                                                                                                                |
+| ---------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /dashboard/index.html`                                                                                                        | HTTP 200, 2971 bytes                                                                                                                                                  |
+| `GET /dashboard/assets/styles.css`                                                                                                 | HTTP 200, 13 462 bytes                                                                                                                                                |
+| `GET /dashboard/assets/app.js`                                                                                                     | HTTP 200, 3 296 bytes                                                                                                                                                 |
+| `GET /api/v1/dashboard/overview`                                                                                                   | `cards: {citizen_reports: 370, open_issues: 2, total_projects: 18, total_infrastructure: 42, critical_issues: 1, todays_reports: 0, total_citizens: 9}`               |
+| `GET /api/v1/dashboard/pipeline/preview?message=Is%20there%20a%20hospital%20in%20Likoni%3F`                                        | `stages: [intake, classify, retrieval, context, analyze]`, `intent: infrastructure_lookup`, `confidence: 0.72`, `top match: Likoni Sub-County Hospital, score 9.0` ✅ |
+| `GET /api/v1/dashboard/pipeline/preview?message=the%20road%20towards%20nyali%20from%20buxton%20is%20very%20poor%20with%20potholes` | `intent: complaint`, `confidence: > 0.5`, `keywords_matched: ['pothole']`, 4 retrieval matches ✅                                                                     |
+
+## Files Created / Modified
+
+- **Created**
+  - `app/api/dashboard.py` — Sprint 7 read-only analytics router
+  - `app/static/dashboard/index.html` — SPA shell
+  - `app/static/dashboard/assets/styles.css` — dashboard theme
+  - `app/static/dashboard/assets/app.js` — hash router + page dispatcher
+  - `app/static/dashboard/assets/api.js` — fetch wrapper
+  - `app/static/dashboard/assets/ui.js` — DOM helpers + SVG charts
+  - `app/static/dashboard/assets/overview.js`
+  - `app/static/dashboard/assets/issues.js`
+  - `app/static/dashboard/assets/projects.js`
+  - `app/static/dashboard/assets/infrastructure.js`
+  - `app/static/dashboard/assets/pipeline.js`
+  - `app/static/dashboard/assets/analytics.js`
+  - `app/static/dashboard/assets/activity.js`
+  - `tests/test_dashboard_api.py` — 16 dashboard tests
+- **Modified**
+  - `app/main.py` — register `dashboard_router` + mount the static SPA at `/dashboard`
+  - `app/api/__init__.py` — re-export `dashboard_router`
+  - `docs/development/DECISIONS.md` — DECISION-0016, DECISION-0017
+  - `docs/development/CHANGELOG.md` — 0.7.0 section
+  - `docs/development/SESSION_HANDOFF.md` — this file
+
+---
+
+## Next Task (Sprint 8 — Polish, Demo Prep & Deployment)
+
+1. **Demo recording walkthrough** — capture a 3-minute screen recording of the dashboard and the live WhatsApp → RAG → grounded reply loop for the hackathon submission.
+2. **End-to-end live integration test** — live WhatsApp → webhook → RAG → grounded reply, with the dashboard's Live Activity Feed showing the round trip in real time.
+3. **Housekeeping PR** — `pip install httpx[socks]` to clear the 13 pre-existing `socksio` test failures in `test_providers.py`, `test_rag.py`, `test_llm.py` (separate PR; tracked in previous handoff).
+4. **Cloud Run deployment** — wire the existing `Dockerfile` to deploy the FastAPI app (now also serving the dashboard) to Cloud Run, with the public `https://<host>/dashboard` URL as the demo entry point.
+5. **MP persona demo data** — seed two or three "demo citizens" with full submission histories so the AI Pipeline Visualizer's "Live" mode has something compelling to show during the hackathon judging window.
 
 ---
 

@@ -2,7 +2,8 @@
 
 Populates sample data for 6 constituencies (Likoni, Mvita, Nyali, Kisauni, Changamwe, Jomvu)
 covering Infrastructure (Roads, Schools, Hospitals, Markets, Water points, Boreholes, Bridges)
-and Projects (Ongoing, Planned, Completed), plus sample users, submissions, and issues.
+and Projects (Ongoing, Planned, Completed), plus sample users, submissions, issues, agent actions,
+and AI summaries.
 """
 
 import logging
@@ -106,85 +107,175 @@ PROJECTS_DATA = [
     {"constituency": "Jomvu", "name": "Miritini SGR Bus Station Link", "type": "Transport", "status": "Completed", "budget": 20000000.0, "description": "Built paved matatu and taxi terminal adjacent to Mombasa SGR terminus.", "start_date": "2025-04-01", "target_completion_date": "2025-10-15"},
 ]
 
+SUBMISSIONS_SEED = [
+    # Likoni
+    {
+        "phone": "+254712345678", "name": "Amina Hassan", "constituency": "Likoni", "ward": "Mtongwe",
+        "raw": "The water borehole in Mtongwe has low pressure and dirty water. Please fix it urgently.",
+        "issue_title": "Contaminated / Low pressure water supply", "category": "Boreholes", "severity": "high", "status": "open",
+        "summary": "Citizen reports water quality and pressure issues at Mtongwe Borehole in Likoni.", "intent": "report_infrastructure_fault"
+    },
+    {
+        "phone": "+254712987654", "name": "Hassan Ali", "constituency": "Likoni", "ward": "Likoni Town",
+        "raw": "The road leading to Likoni Ferry Ramp has deep potholes causing severe traffic gridlock every morning.",
+        "issue_title": "Ferry Access Road surface degradation and potholes", "category": "Roads", "severity": "high", "status": "open",
+        "summary": "Driver reports heavy morning traffic caused by potholes at Likoni Ferry Access Road.", "intent": "report_infrastructure_fault"
+    },
+    {
+        "phone": "+254712555777", "name": "Zahra Mohamed", "constituency": "Likoni", "ward": "Bofu",
+        "raw": "Likoni Sub-County Hospital maternity wing needs more beds and medical supplies.",
+        "issue_title": "Maternity ward bed shortage and equipment upgrade", "category": "Hospitals", "severity": "medium", "status": "in_progress",
+        "summary": "Mother reports shortage of maternity beds at Likoni Sub-County Hospital.", "intent": "complaint"
+    },
+
+    # Mvita
+    {
+        "phone": "+254734567890", "name": "Fatuma Ali", "constituency": "Mvita", "ward": "Old Town",
+        "raw": "Old Town heritage market drainage is blocked and overflowing after heavy rains.",
+        "issue_title": "Blocked storm drainage at Mackinnon Market", "category": "Markets", "severity": "high", "status": "open",
+        "summary": "Merchant reports storm drain overflow at Mackinnon Market in Old Town Mvita.", "intent": "complaint"
+    },
+    {
+        "phone": "+254734111222", "name": "Suleiman Bakari", "constituency": "Mvita", "ward": "Tudor",
+        "raw": "Mvita Tudor Borehole pump motor failed 3 weeks ago, leaving community without water.",
+        "issue_title": "Pump motor failure at Tudor Borehole", "category": "Boreholes", "severity": "critical", "status": "open",
+        "summary": "Tudor resident reports complete pump failure at Tudor Borehole in Mvita.", "intent": "report_infrastructure_fault"
+    },
+
+    # Nyali
+    {
+        "phone": "+254722334455", "name": "David Kiprop", "constituency": "Nyali", "ward": "Kongowea",
+        "raw": "Kongowea Market wholesale section needs extra security patrols during midnight deliveries.",
+        "issue_title": "Security enhancement for midnight trading at Kongowea Market", "category": "Markets", "severity": "low", "status": "open",
+        "summary": "Wholesaler requests midnight security patrols at Kongowea Market in Nyali.", "intent": "general_question"
+    },
+    {
+        "phone": "+254722667788", "name": "Grace Wambui", "constituency": "Nyali", "ward": "Frere Town",
+        "raw": "The Nyali Beach Link Road pedestrian walkway needs repainting and speed bumps.",
+        "issue_title": "Pedestrian safety enhancements on Nyali Beach Link Road", "category": "Roads", "severity": "low", "status": "resolved",
+        "summary": "Resident requested speed bumps and refreshed crosswalks on Nyali Link Road.", "intent": "status_update"
+    },
+
+    # Kisauni
+    {
+        "phone": "+254723456789", "name": "John Omondi", "constituency": "Kisauni", "ward": "Bamburi",
+        "raw": "Deep potholes along Bamburi Road near Kiembeni junction are causing heavy traffic and vehicle breakdowns.",
+        "issue_title": "Road surface degradation and potholes along Bamburi Road", "category": "Roads", "severity": "high", "status": "open",
+        "summary": "Commuter reports severe potholes causing breakdowns on Bamburi Road in Kisauni.", "intent": "complaint"
+    },
+    {
+        "phone": "+254723999000", "name": "Mary Otieno", "constituency": "Kisauni", "ward": "Mjambere",
+        "raw": "Kisauni Dispensary roof is leaking in the maternal ward during rain.",
+        "issue_title": "Roof repair required at Kisauni Dispensary maternal ward", "category": "Hospitals", "severity": "critical", "status": "open",
+        "summary": "Patient reports roof leaks at Kisauni Dispensary maternal ward.", "intent": "report_infrastructure_fault"
+    },
+
+    # Changamwe
+    {
+        "phone": "+254711223344", "name": "Peter Kamau", "constituency": "Changamwe", "ward": "Airport",
+        "raw": "Heavy freight trucks along Industrial Corridor Road are spilling dust and polluting air.",
+        "issue_title": "Air pollution and dust suppression on Industrial Corridor Road", "category": "Roads", "severity": "medium", "status": "open",
+        "summary": "Resident reports air pollution from unwatered freight truck corridor in Changamwe.", "intent": "complaint"
+    },
+    {
+        "phone": "+254711556677", "name": "Nelly Chebet", "constituency": "Changamwe", "ward": "Magongo",
+        "raw": "Changamwe West Market vendor stalls lack clean running water supply.",
+        "issue_title": "Water sanitation connection for Changamwe West Market", "category": "Markets", "severity": "high", "status": "in_progress",
+        "summary": "Vendor requests piped water installation for stalls at Changamwe West Market.", "intent": "complaint"
+    },
+
+    # Jomvu
+    {
+        "phone": "+254700112233", "name": "Rashid Mwamba", "constituency": "Jomvu", "ward": "Mikindani",
+        "raw": "Mikindani stormwater drainage is clogged with debris, high risk of flash flooding.",
+        "issue_title": "Clogged storm drain culverts in Mikindani Estate", "category": "Disaster Management", "severity": "critical", "status": "open",
+        "summary": "Resident warns of flood hazard due to clogged stormwater culverts in Mikindani Jomvu.", "intent": "report_infrastructure_fault"
+    },
+    {
+        "phone": "+254700445566", "name": "Halima Juma", "constituency": "Jomvu", "ward": "Owino Uhuru",
+        "raw": "Jomvu Owino Uhuru market open stalls need shade covers from heavy sun and rain.",
+        "issue_title": "Vendor shade structures at Owino Uhuru Market", "category": "Markets", "severity": "medium", "status": "open",
+        "summary": "Trader requests weather shelters at Owino Uhuru open market.", "intent": "general_question"
+    },
+]
+
 
 def seed_database(db: Session) -> None:
-    """Populate database with seed data if tables are empty."""
+    """Populate database with seed data if tables are empty or minimal."""
     Base.metadata.create_all(bind=engine)
 
     # Check if infrastructure already exists
-    if db.query(Infrastructure).first():
-        logger.info("Database already contains infrastructure data, skipping seed.")
-        return
+    if not db.query(Infrastructure).first():
+        logger.info("Seeding constituency infrastructure...")
+        for infra in INFRASTRUCTURE_DATA:
+            db.add(Infrastructure(**infra))
 
-    logger.info("Seeding constituency infrastructure...")
-    for infra in INFRASTRUCTURE_DATA:
-        db.add(Infrastructure(**infra))
+    if not db.query(Project).first():
+        logger.info("Seeding constituency projects...")
+        for proj in PROJECTS_DATA:
+            db.add(Project(**proj))
 
-    logger.info("Seeding constituency projects...")
-    for proj in PROJECTS_DATA:
-        db.add(Project(**proj))
+    # Check if we need to seed submissions & issues
+    if db.query(Submission).count() < len(SUBMISSIONS_SEED):
+        logger.info("Seeding sample citizen users, submissions, issues & AI summaries...")
+        for data in SUBMISSIONS_SEED:
+            user = db.query(User).filter(User.phone_number == data["phone"]).first()
+            if not user:
+                user = User(
+                    phone_number=data["phone"],
+                    name=data["name"],
+                    constituency=data["constituency"],
+                    ward=data["ward"]
+                )
+                db.add(user)
+                db.flush()
 
-    # Seed initial sample users and submissions
-    logger.info("Seeding sample citizen users & complaints...")
-    u1 = User(phone_number="+254712345678", name="Amina Hassan", constituency="Likoni", ward="Mtongwe")
-    u2 = User(phone_number="+254723456789", name="John Omondi", constituency="Kisauni", ward="Bamburi")
-    u3 = User(phone_number="+254734567890", name="Fatuma Ali", constituency="Mvita", ward="Old Town")
+            sess = db.query(ConversationSession).filter(ConversationSession.user_id == user.id).first()
+            if not sess:
+                sess = ConversationSession(user_id=user.id, channel="whatsapp", status="active")
+                db.add(sess)
+                db.flush()
 
-    db.add_all([u1, u2, u3])
-    db.flush()
+            sub = Submission(
+                session_id=sess.id,
+                user_id=user.id,
+                raw_content=data["raw"],
+                constituency=data["constituency"],
+                ward=data["ward"],
+                status="categorized",
+            )
+            db.add(sub)
+            db.flush()
 
-    s1 = ConversationSession(user_id=u1.id, channel="whatsapp", status="active")
-    s2 = ConversationSession(user_id=u2.id, channel="whatsapp", status="active")
-    db.add_all([s1, s2])
-    db.flush()
+            issue = Issue(
+                submission_id=sub.id,
+                title=data["issue_title"],
+                category=data["category"],
+                severity=data["severity"],
+                status=data["status"],
+            )
+            db.add(issue)
 
-    sub1 = Submission(
-        session_id=s1.id,
-        user_id=u1.id,
-        raw_content="The water borehole in Mtongwe has low pressure and dirty water. Please fix it urgently.",
-        constituency="Likoni",
-        ward="Mtongwe",
-        status="categorized",
-    )
-    sub2 = Submission(
-        session_id=s2.id,
-        user_id=u2.id,
-        raw_content="Deep potholes along the Bamburi Road are causing heavy traffic and vehicle breakdowns.",
-        constituency="Kisauni",
-        ward="Bamburi",
-        status="received",
-    )
-    db.add_all([sub1, sub2])
-    db.flush()
+            summary = AISummary(
+                submission_id=sub.id,
+                session_id=sess.id,
+                summary_text=data["summary"],
+                extracted_intent=data["intent"],
+                key_entities=f"{data['constituency']}, {data['ward']}, {data['category']}",
+                confidence_score=0.92,
+            )
+            db.add(summary)
 
-    issue1 = Issue(
-        submission_id=sub1.id,
-        title="Contaminated / Low pressure water supply",
-        category="Boreholes",
-        severity="high",
-        status="open",
-    )
-    issue2 = Issue(
-        submission_id=sub2.id,
-        title="Road surface degradation and potholes",
-        category="Roads",
-        severity="medium",
-        status="open",
-    )
-    db.add_all([issue1, issue2])
+            action = AgentAction(
+                session_id=sess.id,
+                submission_id=sub.id,
+                action_type="routed_to_department",
+                reasoning_notes=f"Categorized issue for {data['constituency']} {data['category']} department.",
+            )
+            db.add(action)
 
-    summary1 = AISummary(
-        submission_id=sub1.id,
-        session_id=s1.id,
-        summary_text="Citizen reports water quality and pressure issues at Mtongwe Borehole in Likoni.",
-        extracted_intent="report_infrastructure_fault",
-        key_entities="Likoni, Mtongwe, Borehole",
-        confidence_score=0.95,
-    )
-    db.add(summary1)
-
-    db.commit()
-    logger.info("Database seeding completed successfully.")
+        db.commit()
+        logger.info("Database seeding completed successfully.")
 
 
 if __name__ == "__main__":

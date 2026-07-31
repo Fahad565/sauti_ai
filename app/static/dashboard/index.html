@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sauti AI — MP Dashboard</title>
+    <meta
+      name="description"
+      content="Civic intelligence dashboard for Sauti AI — overview, issues, projects, infrastructure, AI pipeline explainer, and live activity feed."
+    />
+    <link rel="stylesheet" href="assets/styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <aside class="sidebar" id="sidebar">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">SA</div>
+          <div class="brand-text">
+            <strong>Sauti AI</strong>
+            <span class="brand-sub">MP Dashboard</span>
+          </div>
+        </div>
+        <nav class="nav" aria-label="Primary">
+          <a class="nav-item" data-route="overview" href="#/overview">
+            <span class="nav-icon" aria-hidden="true">🏠</span>
+            <span>Overview</span>
+          </a>
+          <a class="nav-item" data-route="issues" href="#/issues">
+            <span class="nav-icon" aria-hidden="true">📣</span>
+            <span>Issues</span>
+          </a>
+          <a class="nav-item" data-route="projects" href="#/projects">
+            <span class="nav-icon" aria-hidden="true">🏗</span>
+            <span>Projects</span>
+          </a>
+          <a class="nav-item" data-route="infrastructure" href="#/infrastructure">
+            <span class="nav-icon" aria-hidden="true">🏥</span>
+            <span>Infrastructure</span>
+          </a>
+          <a class="nav-item" data-route="pipeline" href="#/pipeline">
+            <span class="nav-icon" aria-hidden="true">🧠</span>
+            <span>AI Pipeline</span>
+          </a>
+          <a class="nav-item" data-route="activity" href="#/activity">
+            <span class="nav-icon" aria-hidden="true">📡</span>
+            <span>Live feed</span>
+          </a>
+        </nav>
+        <div class="sidebar-footer">
+          <span class="status-dot" id="status-dot" aria-hidden="true"></span>
+          <span class="status-text" id="status-text">Connecting…</span>
+        </div>
+      </aside>
+      <main class="content" id="content" tabindex="-1">
+        <header class="topbar">
+          <button class="hamburger" id="hamburger" aria-label="Toggle navigation">☰</button>
+          <h1 class="topbar-title" id="page-title">Overview</h1>
+          <div class="topbar-meta">
+            <span class="mp-badge">🏛 Hon. MP Office</span>
+            <select id="constituency-select" class="constituency-select" aria-label="Select Constituency">
+              <option value="Likoni" selected>Likoni Constituency</option>
+              <option value="Mvita">Mvita Constituency</option>
+              <option value="Nyali">Nyali Constituency</option>
+              <option value="Kisauni">Kisauni Constituency</option>
+              <option value="Changamwe">Changamwe Constituency</option>
+              <option value="Jomvu">Jomvu Constituency</option>
+              <option value="">All Constituencies</option>
+            </select>
+            <span class="chip" id="last-updated">—</span>
+          </div>
+        </header>
+        <section class="page" id="page" aria-live="polite"></section>
+      </main>
+    </div>
+    <div class="modal" id="modal" hidden></div>
+    <script type="module" src="assets/app.js"></script>
+  </body>
+</html>

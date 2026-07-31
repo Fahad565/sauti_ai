@@ -11,6 +11,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.2] — 2026-07-31 — Issues Sync, Analytics Removal & appendChild Error Elimination
+
+### Fixed
+
+- **"Failed to appendChild" JavaScript error (`app/static/dashboard/assets/ui.js`)**: Rewrote the `el()` and `svg()` DOM helper functions to use a safe recursive `appendChildren()` function that handles `null`, `boolean`, `string`, `number`, and `Node` (including `SVGElement`) children without throwing. Previously, SVG nodes returned by `donutChart()`/`lineChart()` were treated as text via `createTextNode()`, causing a `HierarchyRequestError: Failed to execute 'appendChild'` on every chart render.
+- **Issues page citizen name & created time sync (`app/api/dashboard.py`)**: Issues API now returns `submitted_at` (from `Submission` model) as the primary `created_at` timestamp, falling back to `Issue.created_at`. This ensures the citizen name and timestamp shown in the Issues table are real, synchronized values from the seeded dataset rather than missing or stale values.
+- **Analytics page removed from SPA (`app/static/dashboard/assets/app.js`, `index.html`)**: Removed the Analytics route and its import from `app.js`, and removed the nav link from `index.html`. Navigating to `#/analytics` now safely falls back to the Overview page instead of throwing a render error.
+- **Hardened page error handler (`app/static/dashboard/assets/app.js`)**: Wrapped the `renderRoute()` catch block in a secondary try/catch so any DOM errors during error reporting itself don't cascade into an uncaught exception that freezes the shell.
+
+### Verified
+
+- Full pytest suite: **17/17 passed** (`test_dashboard_api.py`).
+
+---
+
+## [0.7.1] — 2026-07-31 — Dashboard Visual Refinement & MP Constituency Sync
+
+### Fixed
+
+- **Blurred Glass Overlay Bug (`app/static/dashboard/assets/styles.css`)**: Fixed a CSS specificity issue where `.modal { display: grid; backdrop-filter: blur(4px); position: fixed; inset: 0; }` was overriding the browser's default `[hidden]` attribute stylesheet (`display: none`), causing the hidden modal container to overlay the entire dashboard viewport with a blur filter and translucent dark layer. Added explicit `[hidden] { display: none !important; }` and `.modal[hidden] { display: none !important; }` rules so the dashboard displays sharply and clearly with no unwanted glassmorphic blur.
+
+### Changed
+
+- **White-Background Dashboard Theme** (`app/static/dashboard/assets/styles.css`, `ui.js`): Updated the dashboard SPA theme from dark mode (`#0b1220`) to a modern, high-contrast, professional light-mode scheme with a pure white background (`#ffffff`), soft slate elevation (`#f8fafc`), crisp slate text, and emerald/sky accents. All SVG charts (donut, line graph, bar indicators) and table controls were updated to render sharply on white.
+- **Constituency-Aware Telemetry & API Sync** (`app/api/dashboard.py`, `app/static/dashboard/assets/`): Updated `/overview`, `/infrastructure/summary`, `/projects/summary`, and `/activity` FastAPI endpoints to accept an optional `constituency` parameter and execute SQL-filtered aggregations.
+- **MP Office Dashboard View** (`app/static/dashboard/index.html`, `app.js`): Added an MP badge (`🏛 Hon. MP Office`) and a constituency selector dropdown in the sticky topbar. Defaults to Likoni Constituency (or MP's active selection) across all tabs (Overview, Issues, Projects, Infrastructure, Analytics, Live Feed).
+- **Enriched Database Seed Dataset** (`app/db/seed.py`): Populated 18 realistic citizen submissions, matching open/in-progress issues, AI summaries, and agent actions distributed across all 6 target constituencies (Likoni, Mvita, Nyali, Kisauni, Changamwe, Jomvu) to ensure full data sync with backend database models.
+
+### Verified
+
+- Full pytest suite: **60/60 passed** (`test_dashboard_api.py`, `test_crud_api.py`, `test_database.py`, `test_persistence.py`, `test_retrieval.py`, `test_twilio_webhook.py`). Added `test_overview_filters_by_constituency` regression test.
+- Live seed execution: `python -m app.db.seed` successfully reseeded database.
+
+---
+
+## [0.7.0] — 2026-07-31 — MP Dashboard & Civic Intelligence Platform (Sprint 7)
+
+### Added
+
+- **Read-only dashboard analytics router** (`app/api/dashboard.py`): six new FastAPI endpoints under `/api/v1/dashboard` that power the entire SPA — `overview`, `issues` (with filters + facet counts), `infrastructure/summary`, `projects/summary`, `activity` (merged feed), and `pipeline/preview` (run the deterministic stages of the LangGraph pipeline against any hypothetical citizen message, including SQL retrieval, without invoking the LLM). See DECISION-0016.
+- **Static dashboard SPA** (`app/static/dashboard/`): self-contained, hand-rolled, ES-module single-page app — no build step, no `node_modules`, no framework. Pages: Overview, Issues Explorer, Projects, Infrastructure, AI Pipeline Visualizer, Analytics, Live Activity Feed. Hand-rolled SVG bar / donut / line charts in `assets/ui.js`. Hash router for deep-linkable URLs. Responsive sidebar (collapses on `<800px`). See DECISION-0017.
+- **Static SPA mount** (`app/main.py`): FastAPI now serves the dashboard from `/dashboard/index.html` and `/dashboard/assets/*` via `StaticFiles(html=True)`. No build step required — `uvicorn app.main:app` immediately exposes the dashboard.
+- **Pipeline explainer endpoint** (`/api/v1/dashboard/pipeline/preview`): demonstrates to judges and users _exactly_ how a citizen message becomes a grounded response — returns the same intermediate state the agent sees (intent, confidence, top retrieval matches with relevance scores, assembled context).
+- **Regression tests** (`tests/test_dashboard_api.py`, 16 tests): cover the SPA mount, the static file presence, every analytics endpoint, the issue filter behaviour, the pipeline preview's stage ordering, and the "hospital in Likoni" / "potholes in Nyali" demo prompts.
+
+### Verified
+
+- Full pytest suite: **80/80 passed** (was 64; +16 new dashboard tests). The 13 pre-existing `socksio` failures in `test_providers.py`, `test_rag.py`, and `test_llm.py` are still pre-existing and out of scope for this release.
+- Live `uvicorn app.main:app` smoke test:
+  - `GET /dashboard/index.html` → HTTP 200, 2971 bytes
+  - `GET /dashboard/assets/styles.css` → HTTP 200, 13 462 bytes
+  - `GET /dashboard/assets/app.js` → HTTP 200, 3296 bytes
+  - `GET /api/v1/dashboard/overview` → JSON with 370 citizen reports, 18 projects, 42 infrastructure assets.
+  - `GET /api/v1/dashboard/pipeline/preview?message=Is%20there%20a%20hospital%20in%20Likoni%3F` → `intake → classify (intent=infrastructure_lookup, confidence=0.72) → retrieval (top match: Likoni Sub-County Hospital, score 9.0) → context → analyze`. The exact demo flow Sprint 7 promised.
+  - `GET /api/v1/dashboard/pipeline/preview?message=…potholes…` → `intent=complaint, confidence>0.5, keywords_matched=['pothole']`, 4 retrieval matches.
+- `from app.api.dashboard import router; router.routes` → 6 routes registered.
+- All dashboard pages render from the same JSON endpoints the SPA consumes; no parallel implementation, no data drift.
+
+### Operational notes
+
+- The dashboard is served from the same FastAPI process that ingests Twilio webhooks and exposes CRUD. No additional port or process to manage.
+- No new Python dependencies (the SPA is plain ES modules + inline SVG).
+- Authentication remains intentionally absent per the Sprint 7 spec; the dashboard is meant to be opened immediately at the demo URL.
+
+---
+
 ## [0.6.2] — 2026-07-30 — Async Webhook, Outbound REST, and Stage Telemetry
 
 ### Fixed

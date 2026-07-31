@@ -5,10 +5,16 @@ configuration. Adding a new top-level package should not require changes
 to this file beyond the corresponding router import.
 """
 
-from fastapi import FastAPI
+from pathlib import Path
 
-from app.api import twilio_router, crud_router, search_router
+from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+
+from app.api import twilio_router, crud_router, search_router, dashboard_router
 from app.config.settings import get_settings
+
+
+STATIC_DIR = Path(__file__).parent / "static" / "dashboard"
 
 
 def create_app() -> FastAPI:
@@ -82,6 +88,20 @@ def create_app() -> FastAPI:
     app.include_router(twilio_router)
     app.include_router(search_router)
     app.include_router(crud_router)
+    app.include_router(dashboard_router)
+
+    # Serve the static MP Dashboard SPA (Sprint 7).
+    if STATIC_DIR.exists():
+        app.mount(
+            "/dashboard",
+            StaticFiles(directory=str(STATIC_DIR), html=True),
+            name="dashboard",
+        )
+
+        @app.get("/dashboard-redirect", include_in_schema=False)
+        def _dashboard_root() -> dict[str, str]:
+            """Redirect /dashboard to the SPA index, if anyone visits the bare path."""
+            return {"redirect": "/dashboard/index.html"}
 
     return app
 

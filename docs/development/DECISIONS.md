@@ -764,3 +764,144 @@ returned inline.
   in the log format so future edits cannot accidentally break log-scrapers.
 - Neutral: No new dependencies.
 - Neutral: ~6 lines of code in `app/api/webhook.py`.
+
+## DECISION-0016 — Read-only analytics router for the MP Dashboard
+
+**Date:** 2026-07-31
+
+**Status:** Accepted
+
+**Context**
+
+Sprint 7 ("MP Dashboard & Civic Intelligence Platform") requires a
+public dashboard that surfaces everything the backend already stores:
+submission counts, issues, projects, infrastructure, live activity,
+and the AI pipeline's intermediate state. The dashboard must answer
+the questions listed in `docs/development/SPRINT.md` (top issues, last
+24 hours, hotspots, month-over-month complaints, etc.) without
+re-architecting existing endpoints or introducing a new service.
+
+The existing CRUD + search APIs return _raw_ lists; the dashboard needs
+_aggregated_ views. Some views (e.g. last-8-weeks trend, top topics by
+token frequency, severity mix) require multi-table joins and per-row
+Python post-processing that the existing endpoints do not perform.
+
+**Decision**
+
+Introduce `app/api/dashboard.py`, a single new FastAPI `APIRouter`
+mounted at `/api/v1/dashboard` containing six read-only endpoints:
+
+- `GET /overview` — aggregated counts (cards), by-constituency /
+  by-category / by-priority breakdowns, top-token topic list, and an
+  8-week submission trend series.
+- `GET /issues` — joined Issue × Submission × User rows with
+  constituency / category / severity / topic filters and stable
+  per-facet counts.
+- `GET /infrastructure/summary` — per-type and per-constituency
+  counts.
+- `GET /projects/summary` — per-status / per-constituency counts
+  plus total budget.
+- `GET /activity` — merged, time-ordered feed of recent submissions,
+  issues, agent actions, and AI summaries.
+- `GET /pipeline/preview` — runs the LangGraph pipeline's first three
+  stages (`intake → classify → retrieval → context`) against an
+  arbitrary citizen message, returning the exact intermediate state
+  the agent would see (intent + confidence + SQL matches +
+  assembled context). The LLM is **never** invoked from this endpoint
+  — only the deterministic classify + retrieval + context builder.
+
+All endpoints:
+
+- are unauthenticated (per the Sprint 7 spec: "No login. Just open
+  the URL.");
+- return JSON only;
+- never mutate state;
+- use the same `get_db` dependency the rest of the FastAPI routers
+  use, so they share the same connection lifecycle.
+
+**Alternatives considered**
+
+| Option                                      | Reason rejected                                                     |
+| ------------------------------------------- | ------------------------------------------------------------------- |
+| Extend existing `/api/v1/*` routers         | Pollutes domain-shaped endpoints with dashboard concerns.           |
+| Materialized views / denormalised tables    | Adds Alembic migrations, hurts the SQLite-first demo path.          |
+| Run analytics in the SPA from raw endpoints | Forces the dashboard to fetch everything; no good on slow networks. |
+| New microservice                            | Premature for a hackathon dashboard.                                |
+
+**Consequences**
+
+- Positive: Dashboard pages can render in a single round trip per page.
+- Positive: Adds zero new dependencies — pure SQLAlchemy + Python `collections`.
+- Positive: 16 new tests (`tests/test_dashboard_api.py`) lock the contract.
+- Neutral: The router is purely additive; existing endpoints are untouched.
+- Out of scope: caching, pagination, role-based access — explicitly
+  deferred per the Sprint 7 "no login, no auth" requirement.
+
+## DECISION-0017 — Self-contained static SPA served by FastAPI
+
+**Date:** 2026-07-31
+
+**Status:** Accepted
+
+**Context**
+
+Sprint 7 must ship a polished dashboard that judges can navigate on a
+laptop the moment `uvicorn` boots — no build step, no Node.js, no
+package install, no SPA framework version to babysit. At the same
+time the dashboard has to cover six pages (Overview, Issues,
+Projects, Infrastructure, AI Pipeline, Analytics, Live Feed) with
+charts, filters, drill-down modals, and explainable AI.
+
+**Decision**
+
+Build the dashboard as a self-contained ES-module static SPA in
+`app/static/dashboard/`:
+
+```
+app/static/dashboard/
+├── index.html
+└── assets/
+    ├── styles.css     (CSS custom properties, no preprocessor)
+    ├── app.js         (hash router, status indicator, page dispatcher)
+    ├── api.js         (fetch wrapper for /api/v1/dashboard/*)
+    ├── ui.js          (DOM helpers, hand-rolled SVG bar/donut/line charts)
+    ├── overview.js
+    ├── issues.js
+    ├── projects.js
+    ├── infrastructure.js
+    ├── pipeline.js
+    ├── analytics.js
+    └── activity.js
+```
+
+Mount the folder at `/dashboard` via FastAPI's `StaticFiles(html=True)`
+in `app/main.py`. No build step, no `node_modules`, no `npm install`.
+The SPA imports ES modules directly from the browser using
+`<script type="module">`.
+
+Charts (bars, donut, line) are hand-rolled in `ui.js` using inline SVG.
+This keeps the bundle well under 50 KB and avoids a 200 KB charting
+library the dashboard would only need seven views of.
+
+The page dispatcher is a hash router (`#/overview`, `#/issues`, …) so
+refreshing any deep link works without server-side rewrites.
+
+**Alternatives considered**
+
+| Option                          | Reason rejected                                                  |
+| ------------------------------- | ---------------------------------------------------------------- |
+| React / Vue / Svelte            | Build step, dependency surface, deploy friction.                 |
+| Plotly / Chart.js / D3          | 200 KB+ JS for charts the dashboard only needs in seven shapes.  |
+| Server-rendered Jinja templates | Couples dashboard to backend rebuilds; no client-side filtering. |
+| Separate `npm run dev` + proxy  | Requires Node toolchain on evaluator's machine.                  |
+
+**Consequences**
+
+- Positive: `uvicorn app.main:app` boots the dashboard. No build step.
+- Positive: `develop always deployable` (AI rules) — `git pull && uvicorn …` works.
+- Positive: 3 new tests (`test_dashboard_index_html_is_served`,
+  `test_dashboard_assets_are_served`, `test_dashboard_index_html_exists_on_disk`)
+  guard the mount and on-disk presence.
+- Neutral: ~30 KB total JavaScript, all hand-rolled, no supply-chain risk.
+- Risk: The SPA does not include polyfills for very old browsers
+  (`Symbol`, `fetch`, ES modules) — acceptable for hackathon evaluation.
